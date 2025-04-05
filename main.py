@@ -1,8 +1,8 @@
 import sys
 import os # Import os
-import qt_material # Import qt_material to get its path
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QSettings
+import qt_material # Import qt_material to get its path
 from qt_material import apply_stylesheet, set_icons_theme, get_theme
 
 # Import the main window class

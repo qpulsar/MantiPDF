@@ -26,6 +26,9 @@ class MainWindow(QMainWindow):
         self.settings = QSettings("MantiPDF", "Editor")
         self.current_theme = self.settings.value("theme", "dark_teal")
         # self.apply_theme(self.current_theme) # MOVED: Apply theme after UI is built
+        
+        # Uygulama başlangıcında tema bazlı SVG ikonlarını hazırla
+        self._prepare_themed_icons()
 
         # Initialize PDF Handler
         self.pdf_handler = PDFHandler()
@@ -81,7 +84,7 @@ class MainWindow(QMainWindow):
 
         # --- File Menu ---
         file_menu = menu_bar.addMenu("File")
-        self.add_menu_action(file_menu, "Open PDF", self.open_pdf, "Ctrl+O")
+        self.add_menu_action(file_menu, "Open PDF", self.open_pdf, "Ctrl+O", "open")
         self.add_menu_action(file_menu, "Save PDF", self.save_pdf, "Ctrl+S")
         self.add_menu_action(file_menu, "Save As...", self.save_pdf_as, "Ctrl+Shift+S")
         # self.add_menu_action(file_menu, "Print", self.print_pdf, "Ctrl+P") # Placeholder
@@ -129,7 +132,7 @@ class MainWindow(QMainWindow):
     def create_toolbars(self):
         # File toolbar
         file_toolbar = self.toolbar_manager.create_toolbar("File")
-        self.toolbar_manager.add_button(file_toolbar, "Open", "file-open", self.open_pdf).setShortcut("Ctrl+O")
+        self.toolbar_manager.add_button(file_toolbar, "Open", "open", self.open_pdf).setShortcut("Ctrl+O")
         self.toolbar_manager.add_button(file_toolbar, "Save", "file-save", self.save_pdf).setShortcut("Ctrl+S")
         self.toolbar_manager.add_button(file_toolbar, "Save As", "file-save-as", self.save_pdf_as).setShortcut("Ctrl+Shift+S")
         # self.toolbar_manager.add_button(file_toolbar, "Print", "file-print", self.print_pdf).setShortcut("Ctrl+P") # Placeholder
@@ -386,8 +389,25 @@ class MainWindow(QMainWindow):
         self.pdf_viewer.zoom_width()
 
     # --- Theme handling ---
+    def _prepare_themed_icons(self):
+        """Uygulama başlangıcında tüm temalar için SVG ikonlarını hazırlar."""
+        try:
+            from gui.svg_utils import create_themed_icons
+            icons_dir = os.path.join(os.path.dirname(__file__), 'icons')
+            
+            # Tema dizinlerini kontrol et, yoksa oluştur
+            print("Tema bazlı SVG ikonları hazırlanıyor...")
+            create_themed_icons(icons_dir)
+            print("Tema bazlı SVG ikonları hazırlandı.")
+        except Exception as e:
+            print(f"Tema bazlı SVG ikonları hazırlanırken hata oluştu: {e}")
+            import traceback
+            traceback.print_exc()
+            
+    # _update_toolbar_icons metodu kaldırıldı ve toolbar_manager.py'deki update_button_icons metodu kullanılıyor
+    
     def apply_theme(self, theme_name):
-        """Applies the selected qt-material theme."""
+        """Applies the selected qt-material theme and updates SVG icons."""
         print(f"--- Applying theme: {theme_name} ---")
         try:
             # Construct full path to the theme file
@@ -408,6 +428,17 @@ class MainWindow(QMainWindow):
                 if theme_data and 'icon_theme' in theme_data:
                     print(f"Setting icon theme: {theme_data['icon_theme']}") # Debug print
                     set_icons_theme(theme_data['icon_theme'])
+                    
+                    # Tema değiştiğinde önceden hazırlanmış tema bazlı SVG ikonlarını kullanacağız
+                    # İlk çalıştırmada, eğer tema bazlı ikonlar oluşturulmamışsa oluşturalım
+                    from gui.svg_utils import create_themed_icons
+                    icons_dir = os.path.join(os.path.dirname(__file__), 'icons')
+                    
+                    # Tema dizinlerini kontrol et, yoksa oluştur
+                    theme_dir = os.path.join(icons_dir, theme_name)
+                    if not os.path.exists(theme_dir):
+                        print(f"Tema için ikon dizini oluşturuluyor: {theme_name}")
+                        create_themed_icons(icons_dir)
                 else:
                     # If no specific icon theme is defined, don't call set_icons_theme.
                     # Let qt-material handle defaults based on the main theme.
@@ -420,6 +451,9 @@ class MainWindow(QMainWindow):
             self.current_theme = theme_name
             self.settings.setValue("theme", theme_name)
             print(f"Theme successfully set to: {theme_name}") # Debug print
+            
+            # Toolbar butonlarının ikonlarını güncelle
+            self.toolbar_manager.update_button_icons(theme_name)
             
             # Arayüzü yenile (Repolish deneyelim)
             # self.update() # update() yeterli olmayabilir
