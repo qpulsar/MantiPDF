@@ -33,7 +33,7 @@ tema_renkleri = {
     'light_lightgreen_500': '#8bc34a'
 }
 # icon name
-icon_name = 'edit-add-stamp.svg'
+icon_name = 'print.svg'
 # SVG dosyasının yolu
 svg_path = os.path.join(os.path.dirname(__file__), 'gui', 'icons', icon_name)
 icons_dir = os.path.join(os.path.dirname(__file__), 'gui', 'icons')

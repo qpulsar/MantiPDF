@@ -2,10 +2,11 @@ import sys
 import os # Import os
 import qt_material # Import qt_material to get its path
 
-from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtGui import QAction, QIcon, QPainter
 from PyQt6.QtWidgets import QMainWindow, QApplication, QLabel, QMenu, QMenuBar, QFileDialog, QComboBox, QPushButton, \
     QDockWidget
 from PyQt6.QtCore import Qt, QSettings
+from PyQt6.QtPrintSupport import QPrinter, QPrintDialog, QPrintPreviewDialog
 
 from core.pdf_handler import PDFHandler 
 from gui.pdf_viewer import PDFViewer
@@ -87,7 +88,7 @@ class MainWindow(QMainWindow):
         self.add_menu_action(file_menu, "Open PDF", self.open_pdf, "Ctrl+O", "open")
         self.add_menu_action(file_menu, "Save PDF", self.save_pdf, "Ctrl+S")
         self.add_menu_action(file_menu, "Save As...", self.save_pdf_as, "Ctrl+Shift+S")
-        # self.add_menu_action(file_menu, "Print", self.print_pdf, "Ctrl+P") # Placeholder
+        self.add_menu_action(file_menu, "Print", self.print_pdf, "Ctrl+P", "print")
 
         # --- Edit Menu ---
         edit_menu = menu_bar.addMenu("Edit")
@@ -103,8 +104,10 @@ class MainWindow(QMainWindow):
 
         # --- Page Menu ---
         page_menu = menu_bar.addMenu("Page")
+        self.add_menu_action(page_menu, "First Page", self.first_page, "Home") # First page shortcut
         self.add_menu_action(page_menu, "Previous Page", self.previous_page, "PgUp") # Common shortcut
         self.add_menu_action(page_menu, "Next Page", self.next_page, "PgDown") # Common shortcut
+        self.add_menu_action(page_menu, "Last Page", self.last_page, "End") # Last page shortcut
         page_menu.addSeparator()
         self.add_menu_action(page_menu, "Rotate Left", self.rotate_left, "Ctrl+Shift+L")
         self.add_menu_action(page_menu, "Rotate Right", self.rotate_right, "Ctrl+Shift+R")
@@ -116,6 +119,7 @@ class MainWindow(QMainWindow):
         # --- Tools Menu ---
         tools_menu = menu_bar.addMenu("Tools")
         self.add_menu_action(tools_menu, "Merge PDF...", self.merge_pdf)
+        self.add_menu_action(tools_menu, "Split PDF...", self.split_pdf)
 
 
     def add_menu_action(self, menu, text, slot, shortcut=None, icon_name=None):
@@ -135,7 +139,11 @@ class MainWindow(QMainWindow):
         self.toolbar_manager.add_button(file_toolbar, "Open", "open", self.open_pdf).setShortcut("Ctrl+O")
         self.toolbar_manager.add_button(file_toolbar, "Save", "file-save", self.save_pdf).setShortcut("Ctrl+S")
         self.toolbar_manager.add_button(file_toolbar, "Save As", "file-save-as", self.save_pdf_as).setShortcut("Ctrl+Shift+S")
-        # self.toolbar_manager.add_button(file_toolbar, "Print", "file-print", self.print_pdf).setShortcut("Ctrl+P") # Placeholder
+        self.toolbar_manager.add_button(file_toolbar, "Print", "print", self.print_pdf).setShortcut("Ctrl+P")
+
+        # Print toolbar
+        # print_toolbar = self.toolbar_manager.create_toolbar("Print")
+        # self.toolbar_manager.add_button(print_toolbar, "Print", "print", self.print_pdf).setShortcut("Ctrl+P")
 
         # Page toolbar
         page_toolbar = self.toolbar_manager.create_toolbar("Page")
@@ -151,20 +159,27 @@ class MainWindow(QMainWindow):
         zoom_in_button.setShortcut("Ctrl++")
         zoom_out_button = self.toolbar_manager.add_button(view_toolbar, "Zoom Out", "zoom-out", self.zoom_out)
         zoom_out_button.setShortcut("Ctrl+-")
-        previous_page_button = self.toolbar_manager.add_button(view_toolbar, "Previous Page", "go-previous", self.previous_page)
-        # previous_page_button.setShortcut("Ctrl+Shift+Left") # Use PgUp/PgDown standard
+        self.toolbar_manager.add_button(view_toolbar, "Zoom Fit", "zoom-fit", self.zoom_fit)
+        self.toolbar_manager.add_button(view_toolbar, "Zoom Width", "zoom-width", self.zoom_width)
+        
+        # Navigation toolbar - Sayfa gezinme kontrolleri için ayrı bir toolbar
+        navigation_toolbar = self.toolbar_manager.create_toolbar("Navigation")
+        first_page_button = self.toolbar_manager.add_button(navigation_toolbar, "First Page", "go-first-page", self.first_page)
+        first_page_button.setShortcut("Home")
+        previous_page_button = self.toolbar_manager.add_button(navigation_toolbar, "Previous Page", "go-previous", self.previous_page)
         previous_page_button.setShortcut("PgUp")
-        next_page_button = self.toolbar_manager.add_button(view_toolbar, "Next Page", "go-next", self.next_page)
-        # next_page_button.setShortcut("Ctrl+Shift+Right") # Use PgUp/PgDown standard
-        next_page_button.setShortcut("PgDown")
 
         # Add page number display/input
         self.page_label = QLabel("Page: 0 / 0")
-        self.toolbar_manager.add_widget(view_toolbar, self.page_label)
+        self.toolbar_manager.add_widget(navigation_toolbar, self.page_label)
         # Consider adding a QSpinBox or QLineEdit for direct page input later
 
-        self.toolbar_manager.add_button(view_toolbar, "Zoom Fit", "zoom-fit", self.zoom_fit)
-        self.toolbar_manager.add_button(view_toolbar, "Zoom Width", "zoom-width", self.zoom_width)
+
+        next_page_button = self.toolbar_manager.add_button(navigation_toolbar, "Next Page", "go-next", self.next_page)
+        next_page_button.setShortcut("PgDown")
+        last_page_button = self.toolbar_manager.add_button(navigation_toolbar, "Last Page", "go-last-page", self.last_page)
+        last_page_button.setShortcut("End")
+
 
         # Theme selection
         theme_combo = QComboBox()
@@ -212,15 +227,13 @@ class MainWindow(QMainWindow):
                 self.update_status_bar()
 
     def save_pdf(self):
-        """Saves the PDF file to its current path."""
-        if self.pdf_handler.doc:
-            if self.pdf_handler.save_document():
-                self.update_status_bar() # Potentially update modified status
-                print("Document saved.") # TODO: Status bar message
-            else:
-                print("Failed to save document.") # TODO: Error dialog
-        else:
-            print("No document open to save.")
+        """Save the PDF document along with notes."""
+        # First, save notes from the PDF viewer
+        if hasattr(self, 'pdf_viewer'):
+            self.pdf_viewer.save_notes()
+        # Then, proceed with PDF saving using the existing pdf_handler
+        result = self.pdf_handler.save_pdf()
+        return result
 
     def save_pdf_as(self):
         """Saves the PDF file with a new name."""
@@ -298,11 +311,91 @@ class MainWindow(QMainWindow):
         """Displays the next page."""
         if self.pdf_handler.doc and self.current_page_index < self.pdf_handler.page_count - 1:
             self.display_page(self.current_page_index + 1)
+            
+    def first_page(self):
+        """Displays the first page of the document."""
+        if self.pdf_handler.doc and self.pdf_handler.page_count > 0:
+            self.display_page(0)
+            
+    def last_page(self):
+        """Displays the last page of the document."""
+        if self.pdf_handler.doc and self.pdf_handler.page_count > 0:
+            self.display_page(self.pdf_handler.page_count - 1)
 
     def print_pdf(self):
-        """Prints the PDF file."""
-        # TODO: Implement printing (requires QPrinter, QPrintDialog)
-        print("Print PDF (Not Implemented)")
+        """Prints the PDF file using QPrinter and QPrintDialog."""
+        if not self.pdf_handler.doc:
+            print("No document open to print.")
+            return
+            
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        dialog = QPrintDialog(printer, self)
+        dialog.setWindowTitle("Print Document")
+        
+        # Set default print range to all pages
+        dialog.setOption(QPrintDialog.PrintDialogOption.PrintToFile, True)
+        dialog.setOption(QPrintDialog.PrintDialogOption.PrintSelection, False)
+        
+        if dialog.exec() == QPrintDialog.DialogCode.Accepted:
+            # User clicked print
+            try:
+                # Get selected page range
+                print_range = dialog.printRange()
+                from_page = dialog.fromPage()
+                to_page = dialog.toPage()
+                
+                # Adjust for 0-based indexing in PDF handler vs 1-based in dialog
+                if from_page > 0:
+                    from_page -= 1
+                if to_page > 0:
+                    to_page -= 1
+                else:
+                    to_page = self.pdf_handler.page_count - 1
+                
+                # If no specific range is selected, print all pages
+                if print_range == QPrintDialog.PrintRange.AllPages:
+                    from_page = 0
+                    to_page = self.pdf_handler.page_count - 1
+                
+                # Print the document
+                self._print_document(printer, from_page, to_page)
+                print(f"Document printed successfully. Pages {from_page+1} to {to_page+1}")
+            except Exception as e:
+                print(f"Error printing document: {e}")
+        else:
+            print("Printing canceled by user.")
+    
+    def _print_document(self, printer, from_page, to_page):
+        """Handles the actual printing of the document."""
+        painter = QPainter()
+        if painter.begin(printer):
+            try:
+                for i in range(from_page, to_page + 1):
+                    if i > from_page:
+                        printer.newPage()
+                    
+                    # Get the page as a pixmap
+                    pixmap = self.pdf_handler.get_page_pixmap(i, scale=2.0)  # Higher resolution for printing
+                    if pixmap:
+                        # Calculate scaling to fit the page to the printer
+                        printer_rect = printer.pageRect(QPrinter.Unit.DevicePixel)
+                        pixmap_size = pixmap.size()
+                        
+                        # Scale pixmap to fit printer page while maintaining aspect ratio
+                        scale_factor = min(printer_rect.width() / pixmap_size.width(),
+                                          printer_rect.height() / pixmap_size.height())
+                        
+                        target_width = int(pixmap_size.width() * scale_factor)
+                        target_height = int(pixmap_size.height() * scale_factor)
+                        
+                        # Center the pixmap on the page
+                        x = (printer_rect.width() - target_width) // 2
+                        y = (printer_rect.height() - target_height) // 2
+                        
+                        # Draw the pixmap on the printer
+                        painter.drawPixmap(x, y, target_width, target_height, pixmap)
+            finally:
+                painter.end()
 
     def add_page(self):
         """Adds a new blank page after the current page."""
@@ -337,16 +430,16 @@ class MainWindow(QMainWindow):
             print(f"Failed to delete page {page_to_delete}.") # TODO: Error message
 
     def rotate_left(self):
-        """Rotates the current page 90 degrees counter-clockwise."""
-        self.rotate_page(270) # Corresponds to -90 degrees
+        """Rotates the current page 90 degrees counter-clockwise (saat yönünün tersine)."""
+        self.rotate_page(270) # 270 derece = saat yönünün tersine 90 derece
 
     def rotate_right(self):
-        """Rotates the current page 90 degrees clockwise."""
-        self.rotate_page(90)
+        """Rotates the current page 90 degrees clockwise (saat yönünde)."""
+        self.rotate_page(90) # 90 derece = saat yönünde 90 derece
 
     def rotate_180(self):
         """Rotates the current page 180 degrees."""
-        self.rotate_page(180)
+        self.rotate_page(180) # 180 derece = sayfayı baş aşağı çevirme
 
     def rotate_page(self, angle):
         """Rotates the current page by the specified angle and updates views."""
@@ -355,6 +448,7 @@ class MainWindow(QMainWindow):
                 self.display_page(self.current_page_index) # Refresh the main view
                 self.update_thumbnails() # Update all thumbnails (rotation affects them)
                 self.update_status_bar()
+                self.pdf_viewer.update() # Explicitly update the PDF viewer
             else:
                 print(f"Failed to rotate page {self.current_page_index} by {angle} degrees.") # TODO: Error msg
         else:
@@ -374,6 +468,42 @@ class MainWindow(QMainWindow):
                  print(f"Successfully merged {filepath}") # TODO: Status bar
             else:
                  print(f"Failed to merge {filepath}") # TODO: Error dialog
+                 
+    def split_pdf(self):
+        """Splits the current PDF into separate files based on user selection."""
+        if not self.pdf_handler.doc:
+            print("PDF bölmek için önce bir PDF dosyası açın.") # TODO: Message box
+            return
+            
+        # Import the split dialog
+        from gui.split_dialog import SplitDialog
+        
+        # Create and show the split dialog
+        dialog = SplitDialog(self, self.pdf_handler.page_count)
+        if dialog.exec() == SplitDialog.DialogCode.Accepted:
+            # Get the output directory and page ranges from the dialog
+            output_dir = dialog.output_dir
+            page_ranges = dialog.get_page_ranges()
+            
+            # Split the PDF
+            created_files = self.pdf_handler.split_pdf(output_dir, page_ranges)
+            
+            if created_files:
+                # Show success message with the number of created files
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.information(self, "PDF Bölme Başarılı", 
+                                      f"{len(created_files)} PDF dosyası oluşturuldu.\n\nKonum: {output_dir}")
+                
+                # Update status bar
+                self.status_bar.showMessage(f"{len(created_files)} PDF dosyası oluşturuldu.")
+            else:
+                # Show error message
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "PDF Bölme Başarısız", 
+                                  "PDF dosyası bölünürken bir hata oluştu.")
+                
+                # Update status bar
+                self.status_bar.showMessage("PDF bölme işlemi başarısız oldu.")
 
     # --- Zoom methods --- (Forward to PDFViewer)
     def zoom_in(self):
@@ -469,7 +599,19 @@ class MainWindow(QMainWindow):
 
     # --- Placeholders for Edit Toolbar Actions ---
     def add_note(self):
-        print("Add Note (Not Implemented)")
+        """Enable note adding mode in the PDF viewer."""
+        if not self.pdf_handler.doc:
+            print("Not eklemek için önce bir PDF dosyası açın.")
+            return
+            
+        # Toggle add note mode in the PDF viewer
+        is_note_mode = self.pdf_viewer.toggle_add_note_mode()
+        
+        # Update status bar to indicate note mode
+        if is_note_mode:
+            self.status_bar.showMessage("Not eklemek için PDF üzerinde bir noktaya tıklayın.")
+        else:
+            self.update_status_bar()  # Reset status bar
     def add_text(self):
         print("Add Text (Not Implemented)")
     def add_line(self):
@@ -477,7 +619,26 @@ class MainWindow(QMainWindow):
     def highlight(self):
         print("Highlight (Not Implemented)")
     def add_circle(self):
-        print("Add Circle (Not Implemented)")
+        """Add a circle annotation to the PDF."""
+        if not self.pdf_handler.doc:
+            print("Önce bir PDF dosyası açın.")
+            return
+
+        # Get the current page index
+        page_index = self.current_page_index
+
+        # Get the rectangle where the circle should be placed
+        rect = self.pdf_viewer.get_current_rect()
+
+        # Toggle add note mode in the PDF viewer
+        is_note_mode = self.pdf_viewer.toggle_add_note_mode()
+        
+        # Update status bar to indicate circle mode
+        if is_note_mode:
+            self.status_bar.showMessage("Çember eklemek için PDF üzerinde bir noktaya tıklayın.")
+        else:
+            self.update_status_bar()  # Reset status bar
+
     def add_stamp(self):
         print("Add Stamp (Not Implemented)")
 

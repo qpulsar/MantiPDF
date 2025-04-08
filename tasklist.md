@@ -13,9 +13,9 @@
 ## Page Operations
 - [x] Sayfa ekle (boş sayfa) (`core/pdf_handler.py`)
 - [x] Sayfa sil (`core/pdf_handler.py`)
-- [x] Sola döndür (`core/pdf_handler.py`)
-- [x] Sağa döndür (`core/pdf_handler.py`)
-- [x] Ters döndür (180 derece) (`core/pdf_handler.py`)
+- [!] Sola döndür (`core/pdf_handler.py`)
+- [!] Sağa döndür (`core/pdf_handler.py`)
+- [!] Ters döndür (180 derece) (`core/pdf_handler.py`)
 
 ## File Operations
 - [x] PDF Birleştir (mevcut olana başka bir PDF ekle) (`core/pdf_handler.py`)
@@ -25,18 +25,18 @@
 - [ ] Metin çıkart (mevcut sayfadan) (`core/pdf_handler.py`)
 
 ## View Operations
-- [ ] Zoom In (`gui/pdf_viewer.py`)
-- [ ] Zoom Out (`gui/pdf_viewer.py`)
-- [ ] Zoom Fit (tam sığdırma) (`gui/pdf_viewer.py`)
-- [ ] Zoom Fix (genişliğe sığdır) (`gui/pdf_viewer.py`)
+- [x] Zoom In (`gui/pdf_viewer.py`)
+- [x] Zoom Out (`gui/pdf_viewer.py`)
+- [x] Zoom Fit (tam sığdırma) (`gui/pdf_viewer.py`)
+- [x] Zoom Fix (genişliğe sığdır) (`gui/pdf_viewer.py`)
 
 ## Editing/Annotation
-- [ ] Not ekle (yapışkan not gibi?)
 - [ ] Text Ekle
 - [ ] Çizgi Ekle
 - [ ] Vurgula (Highlight)
 - [ ] Daire Ekle
 - [ ] Stampa ekle (kullanıcının seçtiği resim)
+- [ ] Not ekle (yapışkan not gibi)
 
 ## UI/UX
 - [x] Araç çubuklarını oluştur (`gui/toolbar_manager.py`)
