@@ -189,6 +189,21 @@ class PDFHandler:
             print(f"Error rotating page {page_num}: {e}")
             return False
 
+    def move_page(self, from_index: int, to_index: int):
+        """Moves a page from one position to another."""
+        if not self.doc or not (0 <= from_index < self.page_count) or not (0 <= to_index < self.page_count):
+            return False
+        
+        try:
+            # PyMuPDF's move_page is smart about adjusting indices
+            self.doc.move_page(from_index, to_index)
+            self.modified = True
+            print(f"Moved page from {from_index} to {to_index}")
+            return True
+        except Exception as e:
+            print(f"Error moving page: {e}")
+            return False
+
     # --- Placeholder methods for other operations ---
     def add_blank_page(self, width: float = 595, height: float = 842, index: int = -1):
         """Adds a blank page."""
@@ -414,21 +429,7 @@ class PDFHandler:
         return result
         
     def _get_annotations_filepath(self):
-        """Get the path to the annotations file for the current PDF.
-        
-        Returns:
-            The path to the annotations file, or None if no PDF is open.
-        """
-        if not self.filepath:
-            return None
-            
-        # Create annotations directory next to the PDF file
-        pdf_dir = os.path.dirname(self.filepath)
-        pdf_name = os.path.splitext(os.path.basename(self.filepath))[0]
-        annotations_dir = os.path.join(pdf_dir, "annotations")
-        os.makedirs(annotations_dir, exist_ok=True)
-        
-        # Return the path to the annotations file
-        return os.path.join(annotations_dir, f"{pdf_name}.json")
+        """Constructs the filepath for the annotations JSON file."""
+        return None  # Disabled annotation file creation
     
     # Add more methods as needed (text insertion, annotation, etc.)

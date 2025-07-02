@@ -4,7 +4,7 @@ import qt_material # Import qt_material to get its path
 
 from PyQt6.QtGui import QAction, QIcon, QPainter
 from PyQt6.QtWidgets import QMainWindow, QApplication, QLabel, QMenu, QMenuBar, QFileDialog, QComboBox, QPushButton, \
-    QDockWidget
+    QDockWidget, QWidget, QVBoxLayout, QHBoxLayout
 from PyQt6.QtCore import Qt, QSettings
 from PyQt6.QtPrintSupport import QPrinter, QPrintDialog, QPrintPreviewDialog
 
@@ -42,12 +42,45 @@ class MainWindow(QMainWindow):
         # Initialize Thumbnail view
         self.thumbnail_view = ThumbnailView(self)
         self.thumbnail_view.itemSelectionChanged.connect(self.on_thumbnail_selected)
+        self.thumbnail_view.page_moved.connect(self.on_page_moved)
 
-        # Create Dock Widget for Thumbnails
+        # Create Dock Widget for Thumbnails and reorder buttons
         self.thumbnail_dock = QDockWidget("Pages", self)
-        self.thumbnail_dock.setWidget(self.thumbnail_view)
+        thumbnail_container = QWidget()
+        thumbnail_layout = QVBoxLayout(thumbnail_container)
+        thumbnail_layout.setContentsMargins(0, 0, 0, 0)
+        thumbnail_layout.setSpacing(5)
+
+        thumbnail_layout.addWidget(self.thumbnail_view)
+
+        # Create reorder buttons
+        reorder_toolbar = QHBoxLayout()
+        self.move_to_top_btn = QPushButton(QIcon.fromTheme("go-first-page"), "")
+        self.move_up_btn = QPushButton(QIcon.fromTheme("go-previous"), "")
+        self.move_down_btn = QPushButton(QIcon.fromTheme("go-next"), "")
+        self.move_to_bottom_btn = QPushButton(QIcon.fromTheme("go-last-page"), "")
+
+        self.move_to_top_btn.setToolTip("Move Page to Top")
+        self.move_up_btn.setToolTip("Move Page Up")
+        self.move_down_btn.setToolTip("Move Page Down")
+        self.move_to_bottom_btn.setToolTip("Move Page to Bottom")
+
+        reorder_toolbar.addWidget(self.move_to_top_btn)
+        reorder_toolbar.addWidget(self.move_up_btn)
+        reorder_toolbar.addWidget(self.move_down_btn)
+        reorder_toolbar.addWidget(self.move_to_bottom_btn)
+
+        thumbnail_layout.addLayout(reorder_toolbar)
+
+        self.thumbnail_dock.setWidget(thumbnail_container)
         self.thumbnail_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.thumbnail_dock)
+
+        # Connect reorder button signals
+        self.move_to_top_btn.clicked.connect(lambda: self.move_selected_page("top"))
+        self.move_up_btn.clicked.connect(lambda: self.move_selected_page("up"))
+        self.move_down_btn.clicked.connect(lambda: self.move_selected_page("down"))
+        self.move_to_bottom_btn.clicked.connect(lambda: self.move_selected_page("bottom"))
 
         # Initialize toolbar manager
         self.toolbar_manager = ToolbarManager(self)
@@ -297,6 +330,39 @@ class MainWindow(QMainWindow):
             page_num = selected_items[0].data(Qt.ItemDataRole.UserRole) # Retrieve stored page number
             if page_num is not None and page_num != self.current_page_index:
                 self.display_page(page_num)
+
+    def on_page_moved(self, from_index, to_index):
+        """Handles the reordering of pages from the thumbnail view."""
+        if self.pdf_handler.move_page(from_index, to_index):
+            # The moved page is now at to_index. Let's make it the current page.
+            self.current_page_index = to_index
+            
+            # Refresh UI to reflect the new order
+            self.update_thumbnails()
+            self.display_page(self.current_page_index)
+
+    def move_selected_page(self, direction):
+        """Moves the currently selected page using the reorder buttons."""
+        selected_items = self.thumbnail_view.selectedItems()
+        if not selected_items or not self.pdf_handler.doc:
+            return
+
+        from_index = self.thumbnail_view.row(selected_items[0])
+        page_count = self.pdf_handler.page_count
+
+        if direction == "top":
+            to_index = 0
+        elif direction == "up":
+            to_index = from_index - 1
+        elif direction == "down":
+            to_index = from_index + 1
+        elif direction == "bottom":
+            to_index = page_count - 1
+        else:
+            return
+
+        if 0 <= to_index < page_count and from_index != to_index:
+            self.on_page_moved(from_index, to_index)
 
     # def save_pdf_as(self):
     #     """Saves the PDF file with a new name."""

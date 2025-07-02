@@ -303,13 +303,16 @@ class PDFAnnotations:
         try:
             # Create the annotations directory if it doesn't exist
             annotations_dir = os.path.dirname(filepath)
-            os.makedirs(annotations_dir, exist_ok=True)
-            
-            # Save the annotations to a JSON file
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(self.annotations, f, ensure_ascii=False, indent=4)
-                
-            return True
+            # Only create the directory if there are actual annotations to save
+            if self.annotations and len(self.annotations) > 0:
+                os.makedirs(annotations_dir, exist_ok=True)
+                # Save the annotations to a JSON file
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    json.dump(self.annotations, f, ensure_ascii=False, indent=4)
+                return True
+            else:
+                # If there are no annotations, do not create the folder or file
+                return False
         except Exception as e:
             print(f"Error saving annotations: {e}")
             return False
