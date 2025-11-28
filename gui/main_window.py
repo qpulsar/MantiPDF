@@ -153,6 +153,7 @@ class MainWindow(QMainWindow):
         tools_menu = menu_bar.addMenu("Tools")
         self.add_menu_action(tools_menu, "Merge PDF...", self.merge_pdf)
         self.add_menu_action(tools_menu, "Split PDF...", self.split_pdf)
+        self.add_menu_action(tools_menu, "Klasörden PDF Birleştir...", self.merge_pdfs_in_folder)
 
 
     def add_menu_action(self, menu, text, slot, shortcut=None, icon_name=None):
@@ -535,6 +536,42 @@ class MainWindow(QMainWindow):
             else:
                  print(f"Failed to merge {filepath}") # TODO: Error dialog
                  
+    def merge_pdfs_in_folder(self):
+        """Seçilen klasördeki PDF dosyalarını kullanıcı sırasına göre birleştirir."""
+        from PyQt6.QtWidgets import QMessageBox
+        try:
+            # Dialog'u içe aktar ve göster
+            from gui.merge_folder_dialog import MergeFolderDialog
+            dialog = MergeFolderDialog(self)
+            if dialog.exec() == dialog.DialogCode.Accepted:
+                pdf_paths = dialog.get_ordered_file_paths()
+                if not pdf_paths:
+                    QMessageBox.information(self, "Birleştirme", "Birleştirilecek PDF bulunamadı.")
+                    return
+                # Eğer açık belge yoksa ilk PDF'i aç, kalanları ekle
+                start_index = 0
+                if not self.pdf_handler.doc:
+                    if self.pdf_handler.open_document(pdf_paths[0]):
+                        self.current_page_index = 0
+                        self.display_page(self.current_page_index)
+                        start_index = 1
+                    else:
+                        QMessageBox.warning(self, "Birleştirme", f"Açılamadı: {pdf_paths[0]}")
+                        return
+                merged_count = 0
+                for path in pdf_paths[start_index:]:
+                    if self.pdf_handler.merge_pdf(path):
+                        merged_count += 1
+                    else:
+                        print(f"Merge failed: {path}")
+                # UI güncelle
+                self.update_thumbnails()
+                self.update_status_bar()
+                QMessageBox.information(self, "Birleştirme Tamamlandı", 
+                                          f"{len(pdf_paths)} dosyadan {merged_count + (1 if start_index==1 else 0)} dosya birleştirildi.")
+        except Exception as e:
+            print(f"merge_pdfs_in_folder error: {e}")
+
     def split_pdf(self):
         """Splits the current PDF into separate files based on user selection."""
         if not self.pdf_handler.doc:
