@@ -21,10 +21,17 @@ def main():
         theme_file_path = os.path.join(qt_material_path, 'themes', f"{initial_theme}.xml")
 
         if os.path.exists(theme_file_path):
+            import logging
+            logging.getLogger().setLevel(logging.ERROR)
+            
             apply_stylesheet(app, theme=theme_file_path) # Pass full path
-            # Optionally set initial icon theme here too, if needed
+            
+            # Fetch theme data to check for extra settings
+            theme_data = get_theme(initial_theme)
             if theme_data and 'icon_theme' in theme_data:
                 set_icons_theme(theme_data['icon_theme'])
+            
+            logging.getLogger().setLevel(logging.WARNING)
         else:
              print(f"ERROR: Initial theme file not found at {theme_file_path}")
 

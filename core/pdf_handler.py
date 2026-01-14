@@ -34,11 +34,6 @@ class PDFHandler:
             # Initialize annotations handler
             self.annotations = PDFAnnotations(self)
             
-            # Load annotations if they exist
-            annotations_filepath = self._get_annotations_filepath()
-            if annotations_filepath:
-                self.annotations.load_annotations(annotations_filepath)
-                
             return True
         except Exception as e:
             print(f"Error opening PDF {filepath}: {e}")
@@ -51,12 +46,6 @@ class PDFHandler:
         """Closes the currently open PDF document."""
         if self.doc:
             try:
-                # Save annotations if modified
-                if self.modified and self.annotations:
-                    annotations_filepath = self._get_annotations_filepath()
-                    if annotations_filepath:
-                        self.annotations.save_annotations(annotations_filepath)
-                
                 self.doc.close()
             except Exception as e:
                 print(f"Error closing PDF {self.filepath}: {e}")
@@ -128,30 +117,36 @@ class PDFHandler:
             return False
 
         try:
-            # TODO: Implement incremental save if possible and desired
-            # For now, use standard save which might rebuild the file
-            save_opts = {} # Add options like garbage collection, etc. if needed
-            self.doc.save(save_path, **save_opts)
-            
-            # Save annotations to a separate file
-            if self.annotations:
-                old_annotations_filepath = self._get_annotations_filepath()
+            if save_path == self.filepath:
+                # To save to the same file without incremental errors, 
+                # we save to a temporary file, close, replace, and re-open.
+                temp_path = save_path + ".tmp"
+                self.doc.save(temp_path, incremental=False)
                 
-                # If saving to a new path, update the internal filepath first
-                if filepath:
-                    old_filepath = self.filepath
-                    self.filepath = filepath
-                    
-                # Save annotations to the new location
-                new_annotations_filepath = self._get_annotations_filepath()
-                self.annotations.save_annotations(new_annotations_filepath)
+                # Store the current page index to restore after re-opening
+                # Note: This handler doesn't know the current page, 
+                # but the viewer will likely refresh.
+                
+                self.doc.close()
+                if os.path.exists(save_path):
+                    os.remove(save_path)
+                os.rename(temp_path, save_path)
+                
+                # Re-open the document to continue working
+                self.doc = fitz.open(save_path)
+                self.annotations = PDFAnnotations(self) # Re-init annotations handler
+            else:
+                self.doc.save(save_path, incremental=False)
+                self.filepath = save_path
                 
             self.modified = False
-            if filepath:
-                self.filepath = filepath
             return True
         except Exception as e:
             print(f"Error saving PDF to {save_path}: {e}")
+            # Try to recover if possible?
+            if 'temp_path' in locals() and os.path.exists(temp_path):
+                try: os.remove(temp_path)
+                except: pass
             return False
 
     def rotate_page(self, page_num: int, angle: int):
@@ -375,29 +370,28 @@ class PDFHandler:
         x, y = position.x(), position.y()
         rect = QRectF(x - 10, y - 10, 20, 20)  # 20x20 rectangle centered at position
         
-        # Add the note annotation
-        annot = self.annotations.add_note(page_index, rect, content, username)
-        if annot:
-            self.modified = True
-            return annot
+    def add_note(self, page_index, rect, content, username=None, color=(1, 1, 0)):
+        """Add a sticky note annotation to the PDF."""
+        if self.annotations:
+            return self.annotations.add_note(page_index, rect, content, username, color)
         return None
-        
-    def add_textbox(self, page_index, rect, content, fontsize=12, color=(0, 0, 0)):
+
+    def add_textbox(self, page_index, rect, content, fontsize=12, color=(0, 0, 0), fontname="helv"):
         """Add a FreeText annotation to the PDF."""
         if self.annotations:
-            return self.annotations.add_text_annotation(page_index, rect, content, fontsize, color)
+            return self.annotations.add_text_annotation(page_index, rect, content, fontsize, color, fontname)
         return None
 
-    def add_line(self, page_index, start_point, end_point, color=(1, 0, 0), width=2.0):
+    def add_line(self, page_index, start_point, end_point, color=(1, 0, 0), width=2.0, arrow_type="none"):
         """Add a line annotation to the PDF."""
         if self.annotations:
-            return self.annotations.add_line_annotation(page_index, start_point, end_point, color, width)
+            return self.annotations.add_line_annotation(page_index, start_point, end_point, color, width, arrow_type)
         return None
 
-    def add_circle(self, page_index, rect, color=(1, 0, 0), width=2.0):
+    def add_circle(self, page_index, rect, color=(1, 0, 0), fill_color=None, width=2.0):
         """Add a circle annotation to the PDF."""
         if self.annotations:
-            return self.annotations.add_circle_annotation(page_index, rect, color, width)
+            return self.annotations.add_circle_annotation(page_index, rect, color, fill_color, width)
         return None
 
     def add_highlight(self, page_index, rect, color=(1, 1, 0)):
@@ -412,9 +406,36 @@ class PDFHandler:
             return self.annotations.add_stamp_annotation(page_index, rect, stamp_index)
         return None
 
-    def _get_annotations_filepath(self):
-        """Constructs the filepath for the annotations JSON file (Disabled)."""
+    def get_annot_at_point(self, page_index, point):
+        """Finds and returns the annotation at the given point."""
+        if not self.doc or not (0 <= page_index < self.page_count):
+            return None
+        page = self.doc[page_index]
+        fitz_point = fitz.Point(point.x(), point.y())
+        for annot in page.annots():
+            if fitz_point in annot.rect:
+                return annot
         return None
+
+    def get_annotation_content_at_point(self, page_index, point):
+        """Get the content of an annotation at a specific point."""
+        if not self.doc or not (0 <= page_index < self.page_count):
+            return None
+        try:
+            page = self.doc[page_index]
+            fitz_point = fitz.Point(point.x(), point.y())
+            for annot in page.annots():
+                if fitz_point in annot.rect:
+                    info = annot.info
+                    content = info.get("content")
+                    if not content:
+                        content = info.get("title")
+                    return content
+            return None
+        except Exception as e:
+            import logging
+            logging.getLogger("pdf_handler").error(f"Error getting annotation at point: {e}")
+            return None
 
 
 

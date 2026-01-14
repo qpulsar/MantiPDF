@@ -14,6 +14,7 @@ from gui.thumbnail_view import ThumbnailView
 from gui.toolbar_manager import ToolbarManager
 from gui.svg_utils import get_icon_for_theme
 from qt_material import apply_stylesheet, set_icons_theme, get_theme
+from gui.properties_bar import PropertiesBar
 
 class MainWindow(QMainWindow):
     """Main application window for MantiPDF Editor."""
@@ -38,7 +39,23 @@ class MainWindow(QMainWindow):
 
         # Initialize PDF viewer
         self.pdf_viewer = PDFViewer(self)
-        self.setCentralWidget(self.pdf_viewer)
+        self.edit_buttons = {} # Store edit buttons for toggle management
+        
+        # Setup central area with Properties Bar
+        self.central_container = QWidget()
+        self.central_layout = QVBoxLayout(self.central_container)
+        self.central_layout.setContentsMargins(0, 0, 0, 0)
+        self.central_layout.setSpacing(0)
+        
+        self.properties_bar = PropertiesBar(self)
+        self.central_layout.addWidget(self.properties_bar)
+        self.central_layout.addWidget(self.pdf_viewer)
+        
+        self.setCentralWidget(self.central_container)
+        
+        # Connect properties bar signals
+        self.properties_bar.properties_changed.connect(self.pdf_viewer.set_properties)
+        self.pdf_viewer.annotation_selected.connect(self.on_annotation_selected)
 
         # Initialize Thumbnail view
         self.thumbnail_view = ThumbnailView(self)
@@ -47,6 +64,7 @@ class MainWindow(QMainWindow):
 
         # Create Dock Widget for Thumbnails and reorder buttons
         self.thumbnail_dock = QDockWidget("Pages", self)
+        self.thumbnail_dock.setObjectName("thumbnail_dock")
         thumbnail_container = QWidget()
         thumbnail_layout = QVBoxLayout(thumbnail_container)
         thumbnail_layout.setContentsMargins(0, 0, 0, 0)
@@ -137,48 +155,61 @@ class MainWindow(QMainWindow):
         # --- File Menu ---
         file_menu = menu_bar.addMenu("File")
         self.add_menu_action(file_menu, "Open PDF", self.open_pdf, "Ctrl+O", "open")
-        self.add_menu_action(file_menu, "Save PDF", self.save_pdf, "Ctrl+S")
-        self.add_menu_action(file_menu, "Save As...", self.save_pdf_as, "Ctrl+Shift+S")
+        self.add_menu_action(file_menu, "Save PDF", self.save_pdf, "Ctrl+S", "file-save")
+        self.add_menu_action(file_menu, "Save As...", self.save_pdf_as, "Ctrl+Shift+S", "file-save-as")
         self.add_menu_action(file_menu, "Print", self.print_pdf, "Ctrl+P", "print")
 
         # --- Edit Menu ---
         edit_menu = menu_bar.addMenu("Edit")
-        # Add edit actions here later
+        self.add_menu_action(edit_menu, "Select", self.select_tool, shortcut="V", icon_name="tool-select")
+        edit_menu.addSeparator()
+        self.add_menu_action(edit_menu, "Add Note", self.add_note, icon_name="edit-add-note")
+        self.add_menu_action(edit_menu, "Add Text", self.add_text, icon_name="edit-add-text")
+        self.add_menu_action(edit_menu, "Add Line", self.add_line, icon_name="edit-add-line")
+        self.add_menu_action(edit_menu, "Highlight", self.highlight, icon_name="edit-highlight")
+        self.add_menu_action(edit_menu, "Add Circle", self.add_circle, icon_name="edit-add-circle")
+        self.add_menu_action(edit_menu, "Add Stamp", self.add_stamp, icon_name="edit-add-stamp")
 
         # --- View Menu ---
         view_menu = menu_bar.addMenu("View")
+        self.add_menu_action(view_menu, "Zoom In", self.zoom_in, "Ctrl++", "zoom-in")
+        self.add_menu_action(view_menu, "Zoom Out", self.zoom_out, "Ctrl+-", "zoom-out")
+        self.add_menu_action(view_menu, "Zoom Fit", self.zoom_fit, icon_name="zoom-fit")
+        self.add_menu_action(view_menu, "Zoom Width", self.zoom_width, icon_name="zoom-width")
+        view_menu.addSeparator()
         toggle_thumbs_action = self.thumbnail_dock.toggleViewAction()
         toggle_thumbs_action.setText("Toggle Page Thumbnails")
         toggle_thumbs_action.setShortcut("Ctrl+T")
         view_menu.addAction(toggle_thumbs_action)
-        # Add zoom actions etc. to View Menu if desired
 
         # --- Page Menu ---
         page_menu = menu_bar.addMenu("Page")
-        self.add_menu_action(page_menu, "First Page", self.first_page, "Home") # First page shortcut
-        self.add_menu_action(page_menu, "Previous Page", self.previous_page, "PgUp") # Common shortcut
-        self.add_menu_action(page_menu, "Next Page", self.next_page, "PgDown") # Common shortcut
-        self.add_menu_action(page_menu, "Last Page", self.last_page, "End") # Last page shortcut
+        self.add_menu_action(page_menu, "First Page", self.first_page, "Home", "go-first-page")
+        self.add_menu_action(page_menu, "Previous Page", self.previous_page, "PgUp", "go-previous")
+        self.add_menu_action(page_menu, "Next Page", self.next_page, "PgDown", "go-next")
+        self.add_menu_action(page_menu, "Last Page", self.last_page, "End", "go-last-page")
         page_menu.addSeparator()
-        self.add_menu_action(page_menu, "Rotate Left", self.rotate_left, "Ctrl+Shift+L")
-        self.add_menu_action(page_menu, "Rotate Right", self.rotate_right, "Ctrl+Shift+R")
-        self.add_menu_action(page_menu, "Rotate 180", self.rotate_180)
+        self.add_menu_action(page_menu, "Rotate Left", self.rotate_left, "Ctrl+Shift+L", "page-rotate-left")
+        self.add_menu_action(page_menu, "Rotate Right", self.rotate_right, "Ctrl+Shift+R", "page-rotate-right")
+        self.add_menu_action(page_menu, "Rotate 180", self.rotate_180, icon_name="page-rotate-180")
         page_menu.addSeparator()
-        self.add_menu_action(page_menu, "Add Blank Page", self.add_page, "Ctrl+Shift+N")
-        self.add_menu_action(page_menu, "Delete Current Page", self.delete_page, "Ctrl+Shift+D")
+        self.add_menu_action(page_menu, "Add Blank Page", self.add_page, "Ctrl+Shift+N", "page-add")
+        self.add_menu_action(page_menu, "Delete Current Page", self.delete_page, "Ctrl+Shift+D", "page-delete")
 
         # --- Tools Menu ---
         tools_menu = menu_bar.addMenu("Tools")
-        self.add_menu_action(tools_menu, "Merge PDF...", self.merge_pdf)
-        self.add_menu_action(tools_menu, "Split PDF...", self.split_pdf)
-        self.add_menu_action(tools_menu, "Klasörden PDF Birleştir...", self.merge_pdfs_in_folder)
+        self.add_menu_action(tools_menu, "Merge PDF...", self.merge_pdf, icon_name="tool-merge")
+        self.add_menu_action(tools_menu, "Merge PDF in Folder...", self.merge_pdfs_in_folder)
+        self.add_menu_action(tools_menu, "Split PDF...", self.split_pdf, icon_name="tool-split")
 
 
     def add_menu_action(self, menu, text, slot, shortcut=None, icon_name=None):
         """Helper to add an action to a menu."""
         action = QAction(text, self)
         if icon_name:
-            action.setIcon(QIcon.fromTheme(icon_name)) # Requires theme setup or resource file
+            icons_dir = os.path.join(os.path.dirname(__file__), 'icons')
+            icon_path = get_icon_for_theme(f"{icon_name}.svg", self.current_theme, icons_dir)
+            action.setIcon(QIcon(icon_path))
         action.triggered.connect(slot)
         if shortcut:
             action.setShortcut(shortcut)
@@ -246,18 +277,22 @@ class MainWindow(QMainWindow):
         theme_combo.addItems(themes)
         theme_combo.setCurrentText(self.current_theme)
         theme_combo.currentTextChanged.connect(self.apply_theme)
-        print(f"DEBUG: Connected theme_combo.currentTextChanged to {self.apply_theme}") # Add debug print
-        print(f"DEBUG: Is self.apply_theme callable? {callable(self.apply_theme)}") # Check if callable
         self.toolbar_manager.add_widget(view_toolbar, theme_combo)
 
         # Edit toolbar
         edit_toolbar = self.toolbar_manager.create_toolbar("Edit")
-        self.toolbar_manager.add_button(edit_toolbar, "Add Note", "edit-add-note", self.add_note)
-        self.toolbar_manager.add_button(edit_toolbar, "Add Text", "edit-add-text", self.add_text)
-        self.toolbar_manager.add_button(edit_toolbar, "Add Line", "edit-add-line", self.add_line)
-        self.toolbar_manager.add_button(edit_toolbar, "Highlight", "edit-highlight", self.highlight)
-        self.toolbar_manager.add_button(edit_toolbar, "Add Circle", "edit-add-circle", self.add_circle)
-        self.toolbar_manager.add_button(edit_toolbar, "Add Stamp", "edit-add-stamp", self.add_stamp)
+        self.edit_buttons["select"] = self.toolbar_manager.add_button(edit_toolbar, "Select", "tool-select", self.select_tool, checkable=True)
+        self.toolbar_manager.add_separator(edit_toolbar)
+        self.edit_buttons["note"] = self.toolbar_manager.add_button(edit_toolbar, "Add Note", "edit-add-note", self.add_note, checkable=True)
+        self.edit_buttons["text"] = self.toolbar_manager.add_button(edit_toolbar, "Add Text", "edit-add-text", self.add_text, checkable=True)
+        self.edit_buttons["line"] = self.toolbar_manager.add_button(edit_toolbar, "Add Line", "edit-add-line", self.add_line, checkable=True)
+        self.edit_buttons["highlight"] = self.toolbar_manager.add_button(edit_toolbar, "Highlight", "edit-highlight", self.highlight, checkable=True)
+        self.edit_buttons["circle"] = self.toolbar_manager.add_button(edit_toolbar, "Add Circle", "edit-add-circle", self.add_circle, checkable=True)
+        self.edit_buttons["stamp"] = self.toolbar_manager.add_button(edit_toolbar, "Add Stamp", "edit-add-stamp", self.add_stamp, checkable=True)
+        
+        self.toolbar_manager.add_separator(edit_toolbar)
+        self.toolbar_manager.add_button(edit_toolbar, "Merge PDF", "tool-merge", self.merge_pdf)
+        self.toolbar_manager.add_button(edit_toolbar, "Split PDF", "tool-split", self.split_pdf)
 
     def open_pdf(self):
         """Opens a PDF file using a file dialog."""
@@ -284,7 +319,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'pdf_viewer'):
             self.pdf_viewer.save_notes()
         # Then, proceed with PDF saving using the existing pdf_handler
-        result = self.pdf_handler.save_pdf()
+        result = self.pdf_handler.save_document()
         return result
 
     def save_pdf_as(self):
@@ -643,17 +678,20 @@ class MainWindow(QMainWindow):
     def _prepare_themed_icons(self):
         """Uygulama başlangıcında tüm temalar için SVG ikonlarını hazırlar."""
         try:
+            import logging
+            # Tema hazırlığı sırasında qt_material'den gelen yoğun uyarıları sustur
+            logging.getLogger().setLevel(logging.ERROR)
+            
             from gui.svg_utils import create_themed_icons
             icons_dir = os.path.join(os.path.dirname(__file__), 'icons')
             
             # Tema dizinlerini kontrol et, yoksa oluştur
-            print("Tema bazlı SVG ikonları hazırlanıyor...")
             create_themed_icons(icons_dir)
-            print("Tema bazlı SVG ikonları hazırlandı.")
+            
+            # Log seviyesini normale döndür
+            logging.getLogger().setLevel(logging.WARNING)
         except Exception as e:
             print(f"Tema bazlı SVG ikonları hazırlanırken hata oluştu: {e}")
-            import traceback
-            traceback.print_exc()
             
     # _update_toolbar_icons metodu kaldırıldı ve toolbar_manager.py'deki update_button_icons metodu kullanılıyor
     
@@ -718,42 +756,97 @@ class MainWindow(QMainWindow):
             import traceback
             traceback.print_exc() # Print full traceback for detailed error info
 
-    # --- Edit Toolbar Actions ---
+    def on_annotation_selected(self, annot_type, props):
+        """Update properties bar when an annotation is selected."""
+        self.properties_bar.set_current_properties(props)
+        self.properties_bar.update_for_annot_type(annot_type)
+
+if __name__ == "__main__":
+    def select_tool(self):
+        """Enable selection mode."""
+        if self._check_doc_open():
+            if self.edit_buttons["select"].isChecked():
+                self.pdf_viewer.set_annotation_mode("select")
+                self.status_bar.showMessage("Değiştirmek veya silmek için bir nesne seçin.")
+                self._update_edit_buttons("select")
+            else:
+                self.pdf_viewer.set_annotation_mode(None)
+                self.status_bar.showMessage("Seçim iptal edildi.")
+
     def add_note(self):
         """Enable note adding mode."""
         if self._check_doc_open():
-            self.pdf_viewer.set_annotation_mode("note")
-            self.status_bar.showMessage("Not eklemek için tıklayın.")
+            if self.edit_buttons["note"].isChecked():
+                self.pdf_viewer.set_annotation_mode("note")
+                self.status_bar.showMessage("Not eklemek için tıklayın.")
+                self._update_edit_buttons("note")
+            else:
+                self.pdf_viewer.set_annotation_mode(None)
+                self.status_bar.showMessage("Seçim iptal edildi.")
 
     def add_text(self):
         """Enable text adding mode."""
         if self._check_doc_open():
-            self.pdf_viewer.set_annotation_mode("text")
-            self.status_bar.showMessage("Metin eklemek için tıklayıp sürükleyin veya tıklayın.")
+            if self.edit_buttons["text"].isChecked():
+                self.pdf_viewer.set_annotation_mode("text")
+                self.status_bar.showMessage("Metin eklemek için tıklayıp sürükleyin veya tıklayın.")
+                self._update_edit_buttons("text")
+            else:
+                self.pdf_viewer.set_annotation_mode(None)
+                self.status_bar.showMessage("Seçim iptal edildi.")
 
     def add_line(self):
         """Enable line adding mode."""
         if self._check_doc_open():
-            self.pdf_viewer.set_annotation_mode("line")
-            self.status_bar.showMessage("Çizgi eklemek için tıklayıp sürükleyin.")
+            if self.edit_buttons["line"].isChecked():
+                self.pdf_viewer.set_annotation_mode("line")
+                self.status_bar.showMessage("Çizgi eklemek için tıklayıp sürükleyin.")
+                self._update_edit_buttons("line")
+            else:
+                self.pdf_viewer.set_annotation_mode(None)
+                self.status_bar.showMessage("Seçim iptal edildi.")
 
     def highlight(self):
         """Enable highlight mode."""
         if self._check_doc_open():
-            self.pdf_viewer.set_annotation_mode("highlight")
-            self.status_bar.showMessage("Vurgulamak için metni seçin.")
+            if self.edit_buttons["highlight"].isChecked():
+                self.pdf_viewer.set_annotation_mode("highlight")
+                self.status_bar.showMessage("Vurgulamak için metni seçin.")
+                self._update_edit_buttons("highlight")
+            else:
+                self.pdf_viewer.set_annotation_mode(None)
+                self.status_bar.showMessage("Seçim iptal edildi.")
 
     def add_circle(self):
         """Enable circle adding mode."""
         if self._check_doc_open():
-            self.pdf_viewer.set_annotation_mode("circle")
-            self.status_bar.showMessage("Çember eklemek için tıklayıp sürükleyin.")
+            if self.edit_buttons["circle"].isChecked():
+                self.pdf_viewer.set_annotation_mode("circle")
+                self.status_bar.showMessage("Çember eklemek için tıklayıp sürükleyin.")
+                self._update_edit_buttons("circle")
+            else:
+                self.pdf_viewer.set_annotation_mode(None)
+                self.status_bar.showMessage("Seçim iptal edildi.")
 
     def add_stamp(self):
         """Enable stamp adding mode."""
         if self._check_doc_open():
-            self.pdf_viewer.set_annotation_mode("stamp")
-            self.status_bar.showMessage("Damga (ONAYLANDI) eklemek için tıklayın.")
+            if self.edit_buttons["stamp"].isChecked():
+                self.pdf_viewer.set_annotation_mode("stamp")
+                self.status_bar.showMessage("Damga (ONAYLANDI) eklemek için tıklayın.")
+                self._update_edit_buttons("stamp")
+            else:
+                self.pdf_viewer.set_annotation_mode(None)
+                self.status_bar.showMessage("Seçim iptal edildi.")
+
+    def _update_edit_buttons(self, active_mode):
+        """Update the checked state of edit buttons based on the active mode."""
+        self.properties_bar.update_for_tool(active_mode)
+        for mode, button in self.edit_buttons.items():
+            if mode != active_mode:
+                button.blockSignals(True)
+                button.setChecked(False)
+                button.blockSignals(False)
 
     def _check_doc_open(self):
         """Helper to check if a document is open."""

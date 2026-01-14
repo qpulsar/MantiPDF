@@ -25,13 +25,11 @@ def update_svg_colors(svg_path, theme_name):
         theme_file_path = os.path.join(qt_material_path, 'themes', f"{theme_name}.xml")
         
         if not os.path.exists(theme_file_path):
-            print(f"Tema dosyası bulunamadı: {theme_file_path}")
             return None
             
         # Tema verilerini al
         theme_data = get_theme(theme_name)
         if not theme_data or 'primaryColor' not in theme_data:
-            print(f"Tema rengi bulunamadı: {theme_name}")
             return None
             
         # SVG dosyasını oku ve parse et
@@ -114,7 +112,6 @@ def create_themed_icons(icons_dir):
                 if updated_svg:
                     with open(themed_svg_path, 'w', encoding='utf-8') as f:
                         f.write(updated_svg)
-                        print(f"{theme_name} teması için {filename} güncellendi.")
 
 def get_icon_for_theme(icon_name, theme_name, icons_dir):
     """Belirli bir tema için ikon dosyasının tam yolunu döndürür.

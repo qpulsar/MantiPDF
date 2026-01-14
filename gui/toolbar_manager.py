@@ -17,11 +17,12 @@ class ToolbarManager:
     def create_toolbar(self, name):
         """Create a toolbar with the given name."""
         toolbar = QToolBar(name, self.main_window)
+        toolbar.setObjectName(f"toolbar_{name.lower().replace(' ', '_')}")
         self.main_window.addToolBar(toolbar)
         self.toolbars[name] = toolbar
         return toolbar
 
-    def add_button(self, toolbar, text, icon_name, callback):
+    def add_button(self, toolbar, text, icon_name, callback, checkable=False):
         """Add a button to the toolbar."""
         text_view = False
         if not text_view:
@@ -31,6 +32,10 @@ class ToolbarManager:
         button = QPushButton(text1)
         # Gelen text'i tooltip (ipucu) olarak ata
         button.setToolTip(text)
+        
+        if checkable:
+            button.setCheckable(True)
+            
         if icon_name:
             # Tema bazlı ikon yolunu al
             icons_dir = os.path.join(os.path.dirname(__file__), 'icons')
@@ -51,18 +56,17 @@ class ToolbarManager:
                 border-radius: 4px;
                 padding: 3px;
                 background-color: transparent;
-                transition-duration: 0.2s;
             }
             QPushButton:hover {
                 background-color: rgba(128, 128, 128, 0.2);
                 border: 1px solid rgba(128, 128, 128, 0.3);
-                margin: -1px;
-                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
             }
-            QPushButton:pressed {
+            QPushButton:pressed, QPushButton:checked {
                 background-color: rgba(128, 128, 128, 0.4);
                 border: 1px solid rgba(128, 128, 128, 0.5);
-                margin: -1px;
+            }
+            QPushButton:checked:hover {
+                background-color: rgba(128, 128, 128, 0.5);
             }
         """)
         
