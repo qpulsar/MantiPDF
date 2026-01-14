@@ -32,45 +32,39 @@ tema_renkleri = {
     'light_purple_500': '#9c27b0',
     'light_lightgreen_500': '#8bc34a'
 }
-# icon name
-icon_name = 'print.svg'
-# SVG dosyasının yolu
-svg_path = os.path.join(os.path.dirname(__file__), 'gui', 'icons', icon_name)
+
 icons_dir = os.path.join(os.path.dirname(__file__), 'gui', 'icons')
 
-print(f"SVG dosyası: {svg_path}")
+# Tüm SVG dosyalarını bul
+svg_files = [f for f in os.listdir(icons_dir) if f.endswith('.svg') and os.path.isfile(os.path.join(icons_dir, f))]
+
 print(f"İkonlar dizini: {icons_dir}")
+print(f"İşlenecek {len(svg_files)} ikon bulundu.")
 
-# SVG dosyasını oku ve parse et
-tree = ET.parse(svg_path)
-root = tree.getroot()
-
-# Her tema için SVG dosyasını düzenle ve kaydet
-for tema_adi, tema_rengi in tema_renkleri.items():
-    # Tema klasörünü oluştur (eğer yoksa)
-    tema_klasoru = os.path.join(icons_dir, tema_adi)
-    if not os.path.exists(tema_klasoru):
-        os.makedirs(tema_klasoru)
-        print(f"{tema_adi} klasörü oluşturuldu.")
+for icon_name in svg_files:
+    svg_path = os.path.join(icons_dir, icon_name)
     
-    # SVG dosyasını kopyala
-    hedef_svg = os.path.join(tema_klasoru,icon_name)
-    
-    # Yeni bir ağaç oluştur (her tema için ayrı bir kopya)
-    tema_tree = ET.parse(svg_path)
-    tema_root = tema_tree.getroot()
-    
-    # secondary path elementini bul ve rengini güncelle
-    secondary_path = tema_root.find(".//*[@id='secondary']")
-    if secondary_path is not None:
-        # Tema rengini SVG fill özelliğine uygula
-        secondary_path.set('style', f"fill: {tema_rengi};")
-        print(f"{tema_adi} teması için renk {tema_rengi} olarak ayarlandı.")
-    else:
-        print(f"HATA: {tema_adi} teması için secondary path bulunamadı!")
-    
-    # Güncellenmiş SVG'yi kaydet
-    tema_tree.write(hedef_svg, encoding='utf-8', xml_declaration=True)
-    print(f"{tema_adi} teması için {icon_name} güncellendi: {hedef_svg}")
+    # Her tema için SVG dosyasını düzenle ve kaydet
+    for tema_adi, tema_rengi in tema_renkleri.items():
+        # Tema klasörünü oluştur (eğer yoksa)
+        tema_klasoru = os.path.join(icons_dir, tema_adi)
+        if not os.path.exists(tema_klasoru):
+            os.makedirs(tema_klasoru)
+        
+        hedef_svg = os.path.join(tema_klasoru, icon_name)
+        
+        try:
+            tree = ET.parse(svg_path)
+            root = tree.getroot()
+            
+            # secondary path elementini bul ve rengini güncelle
+            secondary_path = root.find(".//*[@id='secondary']")
+            if secondary_path is not None:
+                secondary_path.set('style', f"fill: {tema_rengi};")
+            
+            # Güncellenmiş SVG'yi kaydet
+            tree.write(hedef_svg, encoding='utf-8', xml_declaration=True)
+        except Exception as e:
+            print(f"HATA: {icon_name} ({tema_adi}) işlenirken hata: {e}")
 
 print("\nTüm temalar için SVG dosyaları başarıyla güncellendi.")

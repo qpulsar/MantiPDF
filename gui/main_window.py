@@ -12,6 +12,7 @@ from core.pdf_handler import PDFHandler
 from gui.pdf_viewer import PDFViewer
 from gui.thumbnail_view import ThumbnailView 
 from gui.toolbar_manager import ToolbarManager
+from gui.svg_utils import get_icon_for_theme
 from qt_material import apply_stylesheet, set_icons_theme, get_theme
 
 class MainWindow(QMainWindow):
@@ -55,10 +56,19 @@ class MainWindow(QMainWindow):
 
         # Create reorder buttons
         reorder_toolbar = QHBoxLayout()
-        self.move_to_top_btn = QPushButton(QIcon.fromTheme("go-first-page"), "")
-        self.move_up_btn = QPushButton(QIcon.fromTheme("go-previous"), "")
-        self.move_down_btn = QPushButton(QIcon.fromTheme("go-next"), "")
-        self.move_to_bottom_btn = QPushButton(QIcon.fromTheme("go-last-page"), "")
+        icons_dir = os.path.join(os.path.dirname(__file__), 'icons')
+        
+        # Use themed icons
+        self.move_to_top_btn = QPushButton("")
+        self.move_up_btn = QPushButton("")
+        self.move_down_btn = QPushButton("")
+        self.move_to_bottom_btn = QPushButton("")
+        
+        # Initial icons
+        self.move_to_top_btn.setIcon(QIcon(get_icon_for_theme("move-top.svg", self.current_theme, icons_dir)))
+        self.move_up_btn.setIcon(QIcon(get_icon_for_theme("move-up.svg", self.current_theme, icons_dir)))
+        self.move_down_btn.setIcon(QIcon(get_icon_for_theme("move-down.svg", self.current_theme, icons_dir)))
+        self.move_to_bottom_btn.setIcon(QIcon(get_icon_for_theme("move-bottom.svg", self.current_theme, icons_dir)))
 
         self.move_to_top_btn.setToolTip("Move Page to Top")
         self.move_up_btn.setToolTip("Move Page Up")
@@ -84,6 +94,12 @@ class MainWindow(QMainWindow):
 
         # Initialize toolbar manager
         self.toolbar_manager = ToolbarManager(self)
+        
+        # Register thumbnail move buttons to toolbar manager for theme updates
+        self.toolbar_manager.button_icons[self.move_to_top_btn] = "move-top"
+        self.toolbar_manager.button_icons[self.move_up_btn] = "move-up"
+        self.toolbar_manager.button_icons[self.move_down_btn] = "move-down"
+        self.toolbar_manager.button_icons[self.move_to_bottom_btn] = "move-bottom"
 
         self.create_menu_bar()
         self.create_toolbars()
@@ -109,7 +125,9 @@ class MainWindow(QMainWindow):
         # Initial theme is now applied in main.py BEFORE window creation
         # self.apply_theme(self.current_theme) # REMOVED
 
-        # TODO: Connect signals and slots
+        # Connect overscroll signals for page navigation
+        self.pdf_viewer.overscrollNext.connect(self.next_page)
+        self.pdf_viewer.overscrollPrevious.connect(self.previous_page)
 
     def create_menu_bar(self):
         """Create the application's menu bar."""

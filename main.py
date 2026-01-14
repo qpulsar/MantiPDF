@@ -20,15 +20,11 @@ def main():
         qt_material_path = qt_material.__path__[0]
         theme_file_path = os.path.join(qt_material_path, 'themes', f"{initial_theme}.xml")
 
-        print(f"Attempting to apply initial theme file path from main.py: {theme_file_path}")
         if os.path.exists(theme_file_path):
             apply_stylesheet(app, theme=theme_file_path) # Pass full path
-            print(f"apply_stylesheet called with path: {theme_file_path}")
             # Optionally set initial icon theme here too, if needed
-            theme_data = get_theme(initial_theme) # get_theme still uses the name without extension
             if theme_data and 'icon_theme' in theme_data:
                 set_icons_theme(theme_data['icon_theme'])
-            print(f"Initial theme {initial_theme} applied successfully from main.py.")
         else:
              print(f"ERROR: Initial theme file not found at {theme_file_path}")
 

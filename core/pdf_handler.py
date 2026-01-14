@@ -39,7 +39,6 @@ class PDFHandler:
             if annotations_filepath:
                 self.annotations.load_annotations(annotations_filepath)
                 
-            print(f"Opened PDF: {filepath}")
             return True
         except Exception as e:
             print(f"Error opening PDF {filepath}: {e}")
@@ -59,7 +58,6 @@ class PDFHandler:
                         self.annotations.save_annotations(annotations_filepath)
                 
                 self.doc.close()
-                print(f"Closed PDF: {self.filepath}")
             except Exception as e:
                 print(f"Error closing PDF {self.filepath}: {e}")
             finally:
@@ -149,10 +147,8 @@ class PDFHandler:
                 self.annotations.save_annotations(new_annotations_filepath)
                 
             self.modified = False
-            # If saving to a new path, update the internal filepath
             if filepath:
                 self.filepath = filepath
-            print(f"Document saved to: {save_path}")
             return True
         except Exception as e:
             print(f"Error saving PDF to {save_path}: {e}")
@@ -179,11 +175,11 @@ class PDFHandler:
 
         try:
             page = self.doc[page_num]
+            # Calculate the new rotation angle based on the current rotation
             current_rotation = page.rotation
             new_rotation = (current_rotation + angle) % 360
             page.set_rotation(new_rotation)
             self.modified = True
-            print(f"Rotated page {page_num} by {angle} degrees. New rotation: {new_rotation}")
             return True
         except Exception as e:
             print(f"Error rotating page {page_num}: {e}")
@@ -198,13 +194,11 @@ class PDFHandler:
             # PyMuPDF's move_page is smart about adjusting indices
             self.doc.move_page(from_index, to_index)
             self.modified = True
-            print(f"Moved page from {from_index} to {to_index}")
             return True
         except Exception as e:
             print(f"Error moving page: {e}")
             return False
 
-    # --- Placeholder methods for other operations ---
     def add_blank_page(self, width: float = 595, height: float = 842, index: int = -1):
         """Adds a blank page."""
         if not self.doc: return False
@@ -212,7 +206,6 @@ class PDFHandler:
             # Default A4 size in points
             self.doc.new_page(pno=index, width=width, height=height)
             self.modified = True
-            print(f"Added blank page at index {index if index != -1 else self.page_count-1}")
             return True
         except Exception as e:
             print(f"Error adding blank page: {e}")
@@ -224,88 +217,110 @@ class PDFHandler:
         try:
             self.doc.delete_page(page_num)
             self.modified = True
-            print(f"Deleted page {page_num}")
             return True
         except Exception as e:
             print(f"Error deleting page {page_num}: {e}")
             return False
 
-    def merge_pdf(self, other_pdf_path: str):
-        """Merges another PDF into the current one."""
-        if not self.doc: return False
+    def merge_document(self, other_pdf_path: str):
+        """Merges another PDF document into the current one."""
+        if not self.doc:
+            print("No document open to merge into.")
+            return False
+        if not os.path.exists(other_pdf_path):
+            print(f"File not found: {other_pdf_path}")
+            return False
         try:
-            with fitz.open(other_pdf_path) as other_doc:
-                self.doc.insert_pdf(other_doc)
+            other_doc = fitz.open(other_pdf_path)
+            self.doc.insert_pdf(other_doc)
+            other_doc.close()
             self.modified = True
-            print(f"Merged PDF: {other_pdf_path}")
+            print(f"Merged document {other_pdf_path} into {self.filepath}")
             return True
         except Exception as e:
-            print(f"Error merging PDF {other_pdf_path}: {e}")
+            print(f"Error merging document {other_pdf_path}: {e}")
             return False
             
-    def split_pdf(self, output_dir: str, page_ranges: list = None):
-        """Splits the PDF document into separate PDF files.
-        
+    def split_pdf(self, output_dir: str, split_all: bool, page_ranges: list[tuple[int, int]] | None) -> tuple[bool, str]:
+        """Splits the current PDF based on the provided options.
+
         Args:
-            output_dir: Directory where the split PDF files will be saved.
-            page_ranges: List of page ranges to split into separate files.
-                         Each range is a tuple of (start_page, end_page) (0-indexed).
-                         If None, each page will be saved as a separate file.
-        
+            output_dir: The directory to save the split PDF files.
+            split_all: If True, split every page into a separate file.
+            page_ranges: A list of (start_page, end_page) tuples (0-indexed) 
+                         to split by range. Used if split_all is False.
+
         Returns:
-            List of created file paths if successful, empty list otherwise.
+            A tuple (success: bool, message: str).
         """
-        if not self.doc: return []
-        
+        if not self.doc or not self.filepath:
+            return False, "No document open to split."
+        if not os.path.isdir(output_dir):
+            return False, f"Output directory does not exist: {output_dir}"
+
+        base_filename = os.path.splitext(os.path.basename(self.filepath))[0]
+        split_count = 0
+
         try:
-            # Create output directory if it doesn't exist
-            os.makedirs(output_dir, exist_ok=True)
-            
-            # Get the base filename without extension
-            base_filename = os.path.splitext(os.path.basename(self.filepath))[0]
-            
-            created_files = []
-            
-            # If no page ranges specified, create one file per page
-            if not page_ranges:
-                for page_num in range(self.page_count):
-                    output_path = os.path.join(output_dir, f"{base_filename}_page{page_num+1}.pdf")
-                    
-                    # Create a new PDF with just this page
-                    with fitz.open() as new_doc:
-                        new_doc.insert_pdf(self.doc, from_page=page_num, to_page=page_num)
-                        new_doc.save(output_path)
-                    
-                    created_files.append(output_path)
-                    print(f"Created: {output_path}")
-            else:
-                # Create PDFs according to specified page ranges
-                for i, (start_page, end_page) in enumerate(page_ranges):
-                    # Validate page range
-                    if not (0 <= start_page < self.page_count and 0 <= end_page < self.page_count):
-                        print(f"Invalid page range: {start_page+1}-{end_page+1}")
-                        continue
-                    
-                    # Create descriptive filename
-                    if start_page == end_page:
-                        filename = f"{base_filename}_page{start_page+1}.pdf"
-                    else:
-                        filename = f"{base_filename}_pages{start_page+1}-{end_page+1}.pdf"
-                    
-                    output_path = os.path.join(output_dir, filename)
-                    
-                    # Create a new PDF with the specified pages
-                    with fitz.open() as new_doc:
+            if split_all:
+                # Split every page
+                for i in range(self.page_count):
+                    new_doc = fitz.open() # Create a new empty PDF
+                    new_doc.insert_pdf(self.doc, from_page=i, to_page=i)
+                    output_filename = os.path.join(output_dir, f"{base_filename}_page_{i + 1}.pdf")
+                    new_doc.save(output_filename)
+                    new_doc.close()
+                    split_count += 1
+                message = f"{split_count} sayfa başarıyla ayrı PDF dosyalarına bölündü."
+
+            elif page_ranges:
+                # Split by ranges
+                range_num = 1
+                for start_page, end_page in page_ranges:
+                    if 0 <= start_page < self.page_count and 0 <= end_page < self.page_count and start_page <= end_page:
+                        new_doc = fitz.open()
                         new_doc.insert_pdf(self.doc, from_page=start_page, to_page=end_page)
-                        new_doc.save(output_path)
-                    
-                    created_files.append(output_path)
-                    print(f"Created: {output_path}")
+                        # Determine output filename based on range
+                        if start_page == end_page:
+                            range_desc = f"page_{start_page + 1}"
+                        else:
+                            range_desc = f"pages_{start_page + 1}-{end_page + 1}"
+                        output_filename = os.path.join(output_dir, f"{base_filename}_{range_desc}.pdf")
+                        new_doc.save(output_filename)
+                        new_doc.close()
+                        split_count += 1
+                        range_num += 1
+                    else:
+                        print(f"Skipping invalid page range: {start_page+1}-{end_page+1}")
+                message = f"{split_count} PDF dosyası belirtilen aralıklara göre başarıyla oluşturuldu."
             
-            return created_files
+            else:
+                return False, "Geçersiz bölme seçeneği."
+
+            return True, message
+
         except Exception as e:
-            print(f"Error splitting PDF: {e}")
-            return []
+            error_message = f"PDF bölme sırasında hata oluştu: {e}"
+            print(error_message)
+            return False, error_message
+
+    def extract_text(self, page_num: int) -> str | None:
+        """Extracts text from a specific page."""
+        if not self.doc or not (0 <= page_num < self.page_count):
+            print(f"Invalid document or page number: {page_num}")
+            return None
+            
+        try:
+            # Get the page
+            page = self.doc[page_num]
+            
+            # Extract text from the page
+            text = page.get_text()
+            
+            return text
+        except Exception as e:
+            print(f"Error extracting text from page {page_num}: {e}")
+            return None
             
     def save_page_as_image(self, page_num: int, filepath: str, dpi: int = 300, image_format: str = "png"):
         """Saves a specific page as an image file.
@@ -335,41 +350,12 @@ class PDFHandler:
             # Use RGB color space (no alpha channel)
             pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
             
-            # Save the pixmap as an image file
             pix.save(filepath)
-            
-            print(f"Saved page {page_num+1} as image: {filepath}")
             return True
         except Exception as e:
             print(f"Error saving page as image: {e}")
             return False
             
-    def extract_text(self, page_num: int):
-        """Extracts text from a specific page.
-        
-        Args:
-            page_num: The page number to extract text from (0-indexed).
-            
-        Returns:
-            The extracted text as a string if successful, empty string otherwise.
-        """
-        if not self.doc or not (0 <= page_num < self.page_count):
-            print(f"Invalid document or page number: {page_num}")
-            return ""
-            
-        try:
-            # Get the page
-            page = self.doc[page_num]
-            
-            # Extract text from the page
-            text = page.get_text()
-            
-            return text
-        except Exception as e:
-            print(f"Error extracting text from page {page_num}: {e}")
-            return ""
-
-    # --- Annotation Methods ---
     def add_note(self, page_index, position, content, username=None):
         """Add a note annotation to the PDF.
         
@@ -431,5 +417,24 @@ class PDFHandler:
     def _get_annotations_filepath(self):
         """Constructs the filepath for the annotations JSON file."""
         return None  # Disabled annotation file creation
-    
-    # Add more methods as needed (text insertion, annotation, etc.)
+
+    def add_textbox(self, page_num: int, rect: fitz.Rect, text: str, fontsize: float = 11, fontname: str = "helv", color: tuple = (0, 0, 0)) -> bool:
+        """Adds a text box annotation to a specific page."""
+        if not self.doc or not (0 <= page_num < self.page_count):
+            print("Invalid page number or no document open.")
+            return False
+        try:
+            page = self.doc[page_num]
+            # Insert the text into the specified rectangle
+            # Arguments: rect, text, fontsize, fontname, color, align, ...
+            rc = page.insert_textbox(rect, text, fontsize=fontsize, fontname=fontname, color=color, align=fitz.TEXT_ALIGN_LEFT)
+            if rc < 0:
+                print(f"Warning: Text insertion might not have fit perfectly in the box for page {page_num}. Return code: {rc}")
+                # Still consider it a modification even if it overflows slightly
+            
+            self.modified = True
+            return True
+        except Exception as e:
+            print(f"Error adding text box to page {page_num}: {e}")
+            return False
+

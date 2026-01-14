@@ -111,45 +111,27 @@ class NoteItem(QWidget):
 
     def on_text_changed(self):
         """Handle text changes in the note."""
-        import logging
-        logger = logging.getLogger('note_item')
-        
         self.note_text = self.text_edit.toPlainText()
-        logger.debug(f"Note text changed: {self.note_text[:20]}...")
         
         # Update the note in the PDF document
         if self.parent and hasattr(self.parent, 'pdf_handler') and self.parent.pdf_handler:
-            logger.debug("Parent and pdf_handler exist")
             # Find the index of this note in the parent's notes list
             if self in self.parent.notes:
                 try:
                     note_index = self.parent.notes.index(self)
-                    logger.debug(f"Note index in parent's notes list: {note_index}")
-                    # Update the note in the PDF document
                     if self.parent.current_page_index >= 0:
-                        logger.debug(f"Current page index: {self.parent.current_page_index}")
-                        # Log anchor position details
-                        logger.debug(f"Anchor position - x: {self.anchor_position.x()}, y: {self.anchor_position.y()}")
                         # Remove the old note and add a new one with updated content
                         try:
-                            logger.debug(f"Removing note at page {self.parent.current_page_index}, index {note_index}")
                             self.parent.pdf_handler.remove_note(self.parent.current_page_index, note_index)
-                            logger.debug("Note removed successfully")
-                        except Exception as e:
-                            logger.error(f"Error removing note: {e}")
+                        except Exception:
+                            pass
                         
                         try:
-                            logger.debug(f"Adding new note at page {self.parent.current_page_index}")
                             self.parent.pdf_handler.add_note(self.parent.current_page_index, self.anchor_position, self.note_text, self.username)
-                            logger.debug("Note added successfully")
-                        except Exception as e:
-                            logger.error(f"Error adding note: {e}")
-                except Exception as e:
-                    logger.error(f"Error updating note in PDF document: {e}")
-            else:
-                logger.warning("Note not found in parent's notes list")
-        else:
-            logger.warning("Parent or pdf_handler not available")
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
 
     def close_note(self):
         """Close and remove the note."""

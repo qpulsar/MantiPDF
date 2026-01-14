@@ -14,6 +14,9 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
     note_removed = pyqtSignal(NoteItem)
     # Signal to notify when a note is opened
     note_opened = pyqtSignal(NoteItem)
+    # Signals for overscroll page navigation
+    overscrollNext = pyqtSignal()
+    overscrollPrevious = pyqtSignal()
 
     def __init__(self, parent=None):
         """Initialize the PDF viewer."""
@@ -36,7 +39,12 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
         self.notes = []  # List to store notes on the current page
         self.note_markers = []  # List to store note markers on the current page
         self.add_note_mode = False  # Flag to indicate if we're in add note mode
-        self.notes_dict = {}  # Dictionary mapping page index to list of note dicts
+        
+        # Overscroll tracking
+        self.overscroll_delta = 0
+        self.overscroll_threshold = 400  # Cumulative delta needed to trigger page change
+        self.is_at_top = True
+        self.is_at_bottom = False
         
         # Enable mouse tracking for the image label
         self.image_label.setMouseTracking(True)
@@ -55,7 +63,9 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
         
         self.pdf_handler = pdf_handler
         self.current_page_index = page_index
-        self.current_scale = 1.0 # Reset scale on page change
+        # self.current_scale = 1.0 # REMOVED: Preserve scale on page change
+        self.overscroll_delta = 0
+        self.image_label.move(0, 0)
 
         pixmap = self.pdf_handler.get_page_pixmap(self.current_page_index, scale=self.current_scale)
 
@@ -148,53 +158,33 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
         Args:
             position: The position on the PDF page where the note should be anchored.
         """
-        import logging
-        logger = logging.getLogger('pdf_viewer')
-        
-        logger.debug(f"Adding note at position: {position.x()}, {position.y()}")
-        
         if not self.pdf_handler or self.current_page_index < 0:
-            logger.error("PDF handler not available or invalid page index")
             return None
             
-        # Create a new note widget
         try:
-            logger.debug("Creating new NoteItem")
             note = NoteItem(self, position)
             
             # Set the note's anchor position to the clicked position
             note.anchor_position = position
-            logger.debug(f"Set anchor position: {position.x()}, {position.y()}")
-            
             # Position the note slightly above and to the right of the anchor point
             note_pos = QPoint(position.x() + 20, position.y() - 150)
             note.position = note_pos
             note.move(note_pos)
-            logger.debug(f"Set note position: {note_pos.x()}, {note_pos.y()}")
             
             # Show the note
             note.show()
-            logger.debug("Note widget shown")
             
             # Add the note to the list
             self.notes.append(note)
-            logger.debug(f"Added note to list, total notes: {len(self.notes)}")
             
             # Add the note to the PDF document
-            try:
-                logger.debug(f"Adding note to PDF document at page {self.current_page_index}")
-                result = self.pdf_handler.add_note(self.current_page_index, position, note.note_text, note.username)
-                logger.debug(f"Result of add_note: {result}")
-            except Exception as e:
-                logger.error(f"Error adding note to PDF document: {e}")
+            self.pdf_handler.add_note(self.current_page_index, position, note.note_text, note.username)
             
             # Emit the note_added signal
             self.note_added.emit(note)
-            logger.debug("Emitted note_added signal")
             
             return note
         except Exception as e:
-            logger.error(f"Error creating note: {e}")
             return None
         
     def remove_note(self, note):
@@ -227,12 +217,9 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
         
     def save_notes(self):
         """Save notes for the current page."""
-        if not self.pdf_handler or self.current_page_index < 0 or not self.notes:
-            return
-            
         # Notes are automatically saved to the PDF document when added
         # and when the document is saved
-        print("Saving notes:", self.notes_dict)
+        pass
         # TODO: Integrate with pdf_handler to embed notes into the PDF document
 
     def load_notes(self):
@@ -276,30 +263,61 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
                 self.notes.append(note)
 
     def mousePressEvent(self, event):
-        if self.add_note_mode:
-            # Get current page index
-            page = self.current_page_index
-            if page not in self.notes_dict:
-                self.notes_dict[page] = []
-            # Add a new note at the clicked position
-            self.notes_dict[page].append({"pos": event.pos() })
-            # Optionally, disable note mode after adding one note
-            self.add_note_mode = False
-            self.update()  # trigger repaint
-            # TODO: Emit a signal to update the sidebar note list if needed
-            return
         super().mousePressEvent(event)
 
     def paintEvent(self, event):
         super().paintEvent(event)
-        qp = QPainter(self.viewport())
-        # Draw note markers for the current page
-        current_page = self.current_page_index
-        if current_page in self.notes_dict:
-            qp.setBrush(QColor('red'))
-            for note in self.notes_dict[current_page]:
-                # Draw a small circle at the note position (radius = 5)
-                qp.drawEllipse(note["pos"], 5, 5)
+
+    def wheelEvent(self, event):
+        """Handle wheel events for overscroll page navigation."""
+        # Get vertical scrollbar
+        v_bar = self.verticalScrollBar()
+        
+        # Check if we are at the top or bottom of the scroll area
+        self.is_at_top = (v_bar.value() == v_bar.minimum())
+        self.is_at_bottom = (v_bar.value() == v_bar.maximum())
+        
+        delta = event.angleDelta().y()
+        
+        # Reset overscroll if direction changes
+        if (delta > 0 and self.overscroll_delta < 0) or (delta < 0 and self.overscroll_delta > 0):
+            self.overscroll_delta = 0
+            self.image_label.move(0, 0)
+            
+        if self.is_at_bottom and delta < 0:
+            # We are at bottom and trying to scroll down
+            self.overscroll_delta += delta
+            # Apply a small visual shift
+            shift = max(-30, self.overscroll_delta // 10)
+            self.image_label.move(0, shift)
+            
+            if abs(self.overscroll_delta) >= self.overscroll_threshold:
+                self.overscrollNext.emit()
+                self.overscroll_delta = 0
+                self.image_label.move(0, 0)
+            event.accept()
+            return
+            
+        elif self.is_at_top and delta > 0:
+            # We are at top and trying to scroll up
+            self.overscroll_delta += delta
+            # Apply a small visual shift
+            shift = min(30, self.overscroll_delta // 10)
+            self.image_label.move(0, shift)
+            
+            if abs(self.overscroll_delta) >= self.overscroll_threshold:
+                self.overscrollPrevious.emit()
+                self.overscroll_delta = 0
+                self.image_label.move(0, 0)
+            event.accept()
+            return
+
+        # If we are not at overscroll boundary, reset and let default scrolling happen
+        if self.overscroll_delta != 0:
+            self.overscroll_delta = 0
+            self.image_label.move(0, 0)
+            
+        super().wheelEvent(event)
 
     # --- Event Handling ---
     def eventFilter(self, obj, event):
@@ -349,47 +367,29 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
         Args:
             position: The position on the PDF page where the circle should be anchored.
         """
-        import logging
-        logger = logging.getLogger('pdf_viewer')
-        
-        logger.debug(f"Adding circle annotation at position: {position.x()}, {position.y()}")
-        
         if not self.pdf_handler or self.current_page_index < 0:
-            logger.error("PDF handler not available or invalid page index")
             return None
             
         # Get the current page index
         page_index = self.current_page_index
-        logger.debug(f"Current page index: {page_index}")
 
-        # Create a small rectangle around the position
         try:
             x, y = position.x(), position.y()
             rect = QRectF(x - 10, y - 10, 20, 20)  # 20x20 rectangle centered at position
-            logger.debug(f"Created QRectF: x={rect.x()}, y={rect.y()}, width={rect.width()}, height={rect.height()}")
         except Exception as e:
-            logger.error(f"Error creating QRectF: {e}")
             return None
 
         # Call the add_circle_annotation function
         try:
-            logger.debug("Calling pdf_annotations.add_circle_annotation")
             result = self.pdf_handler.pdf_annotations.add_circle_annotation(page_index, rect, "Circle Annotation")
-            logger.debug(f"Result of add_circle_annotation: {result}")
             return result
         except Exception as e:
-            logger.error(f"Error in add_circle_annotation: {e}")
             return None
 
     def add_circle_annotation(self, rect):
         """Add a circle annotation to the current page using pdf_handler if available."""
-        import logging
-        logger = logging.getLogger('pdf_viewer')
-        logger.debug('Calling pdf_annotations.add_circle_annotation')
         if hasattr(self.pdf_handler, 'pdf_annotations') and hasattr(self.pdf_handler.pdf_annotations, 'add_circle_annotation'):
             try:
                 self.pdf_handler.pdf_annotations.add_circle_annotation(self.current_page_index, rect)
-            except Exception as e:
-                logger.error(f'Error in add_circle_annotation: {e}')
-        else:
-            logger.error('PDFHandler object has no attribute "pdf_annotations"')
+            except Exception:
+                pass
