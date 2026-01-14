@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout, QScrollArea, QMenu
 from PyQt6.QtGui import QPixmap, QImage, QCursor, QPainter, QPen, QColor, QPolygon
-from PyQt6.QtCore import Qt, QPoint, pyqtSignal, QRectF
+from PyQt6.QtCore import Qt, QPoint, QPointF, pyqtSignal, QRectF
 
 from core.pdf_handler import PDFHandler # Import PDFHandler for type hinting
 from gui.note_item import NoteItem # Import the NoteItem class
@@ -36,9 +36,13 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
         self.current_page_index: int = -1
         
         # Note related attributes
-        self.notes = []  # List to store notes on the current page
-        self.note_markers = []  # List to store note markers on the current page
-        self.add_note_mode = False  # Flag to indicate if we're in add note mode
+        self.notes = []  # List to store note markers on the current page
+        self.annotation_mode = None  # Current active tool (note, text, line, circle, highlight, stamp)
+        
+        # Drawing related attributes for rubber-banding
+        self.start_pos = None
+        self.current_pos = None
+        self.is_drawing = False
         
         # Overscroll tracking
         self.overscroll_delta = 0
@@ -52,18 +56,12 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
         self.image_label.installEventFilter(self)
 
     def display_page(self, pdf_handler: PDFHandler, page_index: int):
-        """Display the given PDF page using the handler.
-
-        Args:
-            pdf_handler: The PDFHandler instance containing the document.
-            page_index: The 0-based index of the page to display.
-        """
-        # Clear existing notes when changing pages
-        self.clear_notes()
+        """Display the given PDF page using the handler."""
+        # Clear existing temporary markers when changing pages
+        self.clear_markers()
         
         self.pdf_handler = pdf_handler
         self.current_page_index = page_index
-        # self.current_scale = 1.0 # REMOVED: Preserve scale on page change
         self.overscroll_delta = 0
         self.image_label.move(0, 0)
 
@@ -75,9 +73,6 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
         else:
             self.clear_display()
             self.image_label.setText(f"Error loading page {page_index + 1}.")
-        
-        # Load notes for this page if any
-        self.load_notes()
 
     def clear_display(self):
         """Clears the currently displayed page."""
@@ -89,222 +84,192 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
         self.current_scale = 1.0
 
     def update_display(self):
-        """Re-renders the current page, e.g., after zoom or rotation."""
+        """Re-renders the current page and updates the image label."""
         if self.pdf_handler and self.current_page_index >= 0:
-            # TODO: Add rotation parameter if viewer handles independent rotation
             pixmap = self.pdf_handler.get_page_pixmap(self.current_page_index, scale=self.current_scale)
             if pixmap:
                 self.current_pixmap = pixmap
                 self.image_label.setPixmap(self.current_pixmap)
-            else:
-                # Keep old pixmap? Or show error?
-                print(f"Error updating display for page {self.current_page_index + 1}")
-                # self.image_label.setText(f"Error updating display for page {self.current_page_index + 1}.")
 
-    # --- Zoom Methods (Basic Implementation) ---
+    # --- Tool Management ---
+    def set_annotation_mode(self, mode):
+        """Sets the current annotation tool."""
+        self.annotation_mode = mode
+        if mode:
+            self.setCursor(Qt.CursorShape.CrossCursor)
+        else:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def clear_markers(self):
+        """Clear temporary UI markers (not necessary if we re-render PDF)."""
+        pass
+
+    def save_notes(self):
+        """Placeholder for backward compatibility in main_window.py."""
+        pass
+
+    # --- Event Handling ---
+    def eventFilter(self, obj, event):
+        """Filter events for the image label to handle annotations."""
+        if obj is self.image_label:
+            if event.type() == event.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+                if self.annotation_mode:
+                    self.start_pos = event.pos()
+                    self.current_pos = event.pos()
+                    self.is_drawing = True
+                    return True
+            
+            elif event.type() == event.Type.MouseMove and self.is_drawing:
+                self.current_pos = event.pos()
+                self.image_label.update()  # Trigger repaint for rubber band
+                return True
+            
+            elif event.type() == event.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton and self.is_drawing:
+                self.is_drawing = False
+                self.finish_annotation(event.pos())
+                self.image_label.update()
+                return True
+
+            elif event.type() == event.Type.Paint and self.is_drawing:
+                # Let the default paint happen, then draw rubber band on top
+                pass # Logic moves to a custom paint method if we were subclassing label
+                # Since we use eventFilter on a label, we catch Paint of the label
+                # But it's better to use a custom widget or draw on a copy of pixmap
+                # For simplicity, let's trigger a logic to draw on the label:
+                self.draw_rubber_band()
+
+        return super().eventFilter(obj, event)
+
+    def draw_rubber_band(self):
+        """Draws a preview of the annotation while dragging."""
+        if not self.is_drawing or not self.start_pos or not self.current_pos:
+            return
+
+        painter = QPainter(self.image_label)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(Qt.GlobalColor.red, 2, Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+
+        rect = QRectF(QPointF(self.start_pos), QPointF(self.current_pos)).normalized()
+
+        if self.annotation_mode == "line":
+            painter.drawLine(self.start_pos, self.current_pos)
+        elif self.annotation_mode == "circle":
+            painter.drawEllipse(rect)
+        elif self.annotation_mode == "highlight":
+            painter.setBrush(QColor(255, 255, 0, 100))
+            painter.drawRect(rect)
+        elif self.annotation_mode == "stamp":
+            painter.drawRect(rect)
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "STAMP")
+        elif self.annotation_mode in ["note", "text"]:
+             painter.drawRect(rect)
+
+        painter.end()
+
+    def finish_annotation(self, end_pos):
+        """Finalize the annotation and add it to the PDF."""
+        if not self.pdf_handler or self.current_page_index < 0:
+            return
+
+        # Calculate offset due to centering in image_label
+        offset_x = (self.image_label.width() - (self.current_pixmap.width() if self.current_pixmap else 0)) / 2
+        offset_y = (self.image_label.height() - (self.current_pixmap.height() if self.current_pixmap else 0)) / 2
+
+        # Convert screen coordinates back to PDF units (adjusted for offset and scale)
+        s_pos = QPoint(int((self.start_pos.x() - offset_x) / self.current_scale), 
+                      int((self.start_pos.y() - offset_y) / self.current_scale))
+        e_pos = QPoint(int((end_pos.x() - offset_x) / self.current_scale), 
+                      int((end_pos.y() - offset_y) / self.current_scale))
+        rect = QRectF(QPointF(s_pos), QPointF(e_pos)).normalized()
+
+        # Handle zero-sized or very small rectangles (e.g., single clicks)
+        is_small = rect.width() < 5 and rect.height() < 5
+        if is_small:
+            if self.annotation_mode in ["note", "text", "stamp", "circle"]:
+                # Default size for point-like annotations
+                rect = QRectF(s_pos.x(), s_pos.y(), 50, 50)
+            else:
+                # For line or highlight, ignore very small movements
+                return
+
+        if self.annotation_mode == "note":
+            # Just add a sticky note at the click position
+            self.pdf_handler.add_note(self.current_page_index, rect, "Yeni Not")
+        elif self.annotation_mode == "text":
+            from PyQt6.QtWidgets import QInputDialog
+            text, ok = QInputDialog.getText(self, "Metin Ekle", "Metin giriniz:")
+            if ok and text:
+                self.pdf_handler.add_textbox(self.current_page_index, rect, text)
+        elif self.annotation_mode == "line":
+            if is_small: return
+            self.pdf_handler.add_line(self.current_page_index, s_pos, e_pos)
+        elif self.annotation_mode == "circle":
+            self.pdf_handler.add_circle(self.current_page_index, rect)
+        elif self.annotation_mode == "highlight":
+            if is_small: return
+            self.pdf_handler.add_highlight(self.current_page_index, rect)
+        elif self.annotation_mode == "stamp":
+            self.pdf_handler.add_stamp(self.current_page_index, rect, 0) # 0 = Approved
+
+        # Clear mode after application if desired, or keep it for multiple additions
+        # self.set_annotation_mode(None)
+        
+        # Re-render to show the new annotation
+        self.update_display()
+
+    # --- Zoom Methods ---
     def zoom_in(self):
-        """Zooms in on the current page."""
         self.set_scale(self.current_scale * 1.2)
 
     def zoom_out(self):
-        """Zooms out on the current page."""
         self.set_scale(self.current_scale / 1.2)
 
+    def set_scale(self, scale):
+        self.current_scale = max(0.1, min(scale, 10.0))
+        self.update_display()
+
     def zoom_fit(self):
-        """Zooms to fit the page within the viewer's viewport."""
         if not self.current_pixmap: return
-        # Calculate scale to fit based on viewport size and original pixmap size
-        # This requires the original, unscaled pixmap size ideally, or careful calculation
-        # Basic approximation:
         viewport_size = self.viewport().size()
-        pixmap_size = self.current_pixmap.size() / self.current_scale # Estimate original size
-
-        if pixmap_size.width() == 0 or pixmap_size.height() == 0:
-             return
-
+        pixmap_size = self.current_pixmap.size() / self.current_scale
+        if pixmap_size.width() == 0 or pixmap_size.height() == 0: return
         scale_w = viewport_size.width() / pixmap_size.width()
         scale_h = viewport_size.height() / pixmap_size.height()
         self.set_scale(min(scale_w, scale_h))
 
     def zoom_width(self):
-        """Zooms to fit the page width to the viewer's viewport width."""
         if not self.current_pixmap: return
         viewport_width = self.viewport().width()
-        pixmap_width = self.current_pixmap.width() / self.current_scale # Estimate original width
-
+        pixmap_width = self.current_pixmap.width() / self.current_scale
         if pixmap_width == 0: return
-
         self.set_scale(viewport_width / pixmap_width)
 
-    def set_scale(self, scale):
-        """Sets the zoom scale and updates the display."""
-        # Add min/max scale limits if desired
-        self.current_scale = max(0.1, min(scale, 10.0)) # Example limits
-        self.update_display()
-        
-    # --- Note Management Methods ---
-    def toggle_add_note_mode(self):
-        """Toggle the add note mode."""
-        self.add_note_mode = not self.add_note_mode
-        if self.add_note_mode:
-            self.setCursor(Qt.CursorShape.CrossCursor)  # Change cursor to cross when in add note mode
-        else:
-            self.setCursor(Qt.CursorShape.ArrowCursor)  # Change cursor back to arrow
-        return self.add_note_mode
-        
-    def add_note(self, position):
-        """Add a note at the specified position.
-        
-        Args:
-            position: The position on the PDF page where the note should be anchored.
-        """
-        if not self.pdf_handler or self.current_page_index < 0:
-            return None
-            
-        try:
-            note = NoteItem(self, position)
-            
-            # Set the note's anchor position to the clicked position
-            note.anchor_position = position
-            # Position the note slightly above and to the right of the anchor point
-            note_pos = QPoint(position.x() + 20, position.y() - 150)
-            note.position = note_pos
-            note.move(note_pos)
-            
-            # Show the note
-            note.show()
-            
-            # Add the note to the list
-            self.notes.append(note)
-            
-            # Add the note to the PDF document
-            self.pdf_handler.add_note(self.current_page_index, position, note.note_text, note.username)
-            
-            # Emit the note_added signal
-            self.note_added.emit(note)
-            
-            return note
-        except Exception as e:
-            return None
-        
-    def remove_note(self, note):
-        """Remove a note from the viewer.
-        
-        Args:
-            note: The note to remove.
-        """
-        if note in self.notes:
-            # Get the index of the note
-            note_index = self.notes.index(note)
-            
-            # Remove the note from the list
-            self.notes.remove(note)
-            
-            # Remove the note from the PDF document
-            if self.pdf_handler and self.current_page_index >= 0:
-                self.pdf_handler.remove_note(self.current_page_index, note_index)
-            
-            # Emit the note_removed signal
-            self.note_removed.emit(note)
-            
-    def clear_notes(self):
-        """Clear all notes from the viewer."""
-        # Make a copy of the list to avoid modification during iteration
-        notes_copy = self.notes.copy()
-        for note in notes_copy:
-            note.deleteLater()
-        self.notes.clear()
-        
-    def save_notes(self):
-        """Save notes for the current page."""
-        # Notes are automatically saved to the PDF document when added
-        # and when the document is saved
-        pass
-        # TODO: Integrate with pdf_handler to embed notes into the PDF document
-
-    def load_notes(self):
-        """Load notes for the current page."""
-        if not self.pdf_handler or self.current_page_index < 0:
-            return
-            
-        # Get notes for the current page from the PDF handler
-        notes_data = self.pdf_handler.get_notes(self.current_page_index)
-        
-        # Create note widgets for each note
-        for note_data in notes_data:
-            if note_data["type"] == "note":
-                # Create a rectangle from the note data
-                rect = note_data["rect"]
-                position = QPoint(rect[0] + 10, rect[1] + 10)  # Center of the rectangle
-                
-                # Create a new note
-                note = NoteItem(self, position)
-                note.anchor_position = position
-                
-                # Position the note slightly above and to the right of the anchor point
-                note_pos = QPoint(position.x() + 20, position.y() - 150)
-                note.position = note_pos
-                note.move(note_pos)
-                
-                # Set the note data
-                note.username = note_data.get("username", "Kullanıcı")
-                note.note_text = note_data.get("content", "")
-                note.text_edit.setText(note.note_text)
-                
-                # Update the header label
-                timestamp = note_data.get("creation_date", "")
-                if timestamp:
-                    note.header_label.setText(f"{note.username} {timestamp}")
-                
-                # Show the note
-                note.show()
-                
-                # Add the note to the list
-                self.notes.append(note)
-
-    def mousePressEvent(self, event):
-        super().mousePressEvent(event)
-
-    def paintEvent(self, event):
-        super().paintEvent(event)
-
+    # --- Wheeler event for overscroll ---
     def wheelEvent(self, event):
-        """Handle wheel events for overscroll page navigation."""
-        # Get vertical scrollbar
         v_bar = self.verticalScrollBar()
-        
-        # Check if we are at the top or bottom of the scroll area
         self.is_at_top = (v_bar.value() == v_bar.minimum())
         self.is_at_bottom = (v_bar.value() == v_bar.maximum())
-        
         delta = event.angleDelta().y()
-        
-        # Reset overscroll if direction changes
+
         if (delta > 0 and self.overscroll_delta < 0) or (delta < 0 and self.overscroll_delta > 0):
             self.overscroll_delta = 0
             self.image_label.move(0, 0)
             
         if self.is_at_bottom and delta < 0:
-            # We are at bottom and trying to scroll down
             self.overscroll_delta += delta
-            # Apply a small visual shift
             shift = max(-30, self.overscroll_delta // 10)
             self.image_label.move(0, shift)
-            
             if abs(self.overscroll_delta) >= self.overscroll_threshold:
                 self.overscrollNext.emit()
                 self.overscroll_delta = 0
                 self.image_label.move(0, 0)
             event.accept()
             return
-            
         elif self.is_at_top and delta > 0:
-            # We are at top and trying to scroll up
             self.overscroll_delta += delta
-            # Apply a small visual shift
             shift = min(30, self.overscroll_delta // 10)
             self.image_label.move(0, shift)
-            
             if abs(self.overscroll_delta) >= self.overscroll_threshold:
                 self.overscrollPrevious.emit()
                 self.overscroll_delta = 0
@@ -312,84 +277,7 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
             event.accept()
             return
 
-        # If we are not at overscroll boundary, reset and let default scrolling happen
         if self.overscroll_delta != 0:
             self.overscroll_delta = 0
             self.image_label.move(0, 0)
-            
         super().wheelEvent(event)
-
-    # --- Event Handling ---
-    def eventFilter(self, obj, event):
-        """Filter events for the image label."""
-        if obj is self.image_label:
-            # Handle mouse press events
-            if event.type() == event.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
-                # Store the last clicked position
-                self.last_clicked_position = event.pos()
-                if self.add_note_mode:
-                    # Add a circle at the clicked position
-                    pos = event.pos()
-                    self.add_circle_annotation(pos)
-                    # Turn off add note mode after adding a circle
-                    self.toggle_add_note_mode()
-                    return True
-                    
-            # Handle mouse move events
-            elif event.type() == event.Type.MouseMove:
-                # You can add hover effects or other interactions here
-                pass
-                
-            # Handle context menu events
-            elif event.type() == event.Type.ContextMenu:
-                # Show context menu
-                menu = QMenu(self)
-                add_note_action = menu.addAction("Not Ekle")
-                add_note_action.triggered.connect(lambda: self.add_note(event.pos()))
-                menu.exec(QCursor.pos())
-                return True
-                
-        # Pass the event to the parent class
-        return super().eventFilter(obj, event)
-
-    def get_current_rect(self):
-        """Get the current rectangle on the PDF page."""
-        # Return the last clicked rectangle
-        if hasattr(self, 'last_clicked_position'):
-            x, y = self.last_clicked_position.x(), self.last_clicked_position.y()
-            return QRectF(x - 10, y - 10, 20, 20)  # 20x20 rectangle centered at position
-        else:
-            return QRectF(0, 0, 20, 20)  # Default rectangle if no click has occurred
-
-    def add_circle_annotation(self, position):
-        """Add a circle annotation at the specified position.
-        
-        Args:
-            position: The position on the PDF page where the circle should be anchored.
-        """
-        if not self.pdf_handler or self.current_page_index < 0:
-            return None
-            
-        # Get the current page index
-        page_index = self.current_page_index
-
-        try:
-            x, y = position.x(), position.y()
-            rect = QRectF(x - 10, y - 10, 20, 20)  # 20x20 rectangle centered at position
-        except Exception as e:
-            return None
-
-        # Call the add_circle_annotation function
-        try:
-            result = self.pdf_handler.pdf_annotations.add_circle_annotation(page_index, rect, "Circle Annotation")
-            return result
-        except Exception as e:
-            return None
-
-    def add_circle_annotation(self, rect):
-        """Add a circle annotation to the current page using pdf_handler if available."""
-        if hasattr(self.pdf_handler, 'pdf_annotations') and hasattr(self.pdf_handler.pdf_annotations, 'add_circle_annotation'):
-            try:
-                self.pdf_handler.pdf_annotations.add_circle_annotation(self.current_page_index, rect)
-            except Exception:
-                pass

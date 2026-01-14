@@ -382,59 +382,39 @@ class PDFHandler:
             return annot
         return None
         
-    def get_notes(self, page_index):
-        """Get all note annotations for a specific page.
-        
-        Args:
-            page_index: The 0-based index of the page.
-            
-        Returns:
-            A list of note annotations for the page.
-        """
-        if not self.doc or not self.annotations or not (0 <= page_index < self.page_count):
-            return []
-            
-        return self.annotations.get_annotations(page_index)
-        
-    def remove_note(self, page_index, note_index):
-        """Remove a note annotation from the PDF.
-        
-        Args:
-            page_index: The 0-based index of the page.
-            note_index: The index of the note to remove.
-            
-        Returns:
-            True if successful, False otherwise.
-        """
-        if not self.doc or not self.annotations or not (0 <= page_index < self.page_count):
-            return False
-            
-        result = self.annotations.remove_annotation(page_index, note_index)
-        if result:
-            self.modified = True
-        return result
-        
-    def _get_annotations_filepath(self):
-        """Constructs the filepath for the annotations JSON file."""
-        return None  # Disabled annotation file creation
+    def add_textbox(self, page_index, rect, content, fontsize=12, color=(0, 0, 0)):
+        """Add a FreeText annotation to the PDF."""
+        if self.annotations:
+            return self.annotations.add_text_annotation(page_index, rect, content, fontsize, color)
+        return None
 
-    def add_textbox(self, page_num: int, rect: fitz.Rect, text: str, fontsize: float = 11, fontname: str = "helv", color: tuple = (0, 0, 0)) -> bool:
-        """Adds a text box annotation to a specific page."""
-        if not self.doc or not (0 <= page_num < self.page_count):
-            print("Invalid page number or no document open.")
-            return False
-        try:
-            page = self.doc[page_num]
-            # Insert the text into the specified rectangle
-            # Arguments: rect, text, fontsize, fontname, color, align, ...
-            rc = page.insert_textbox(rect, text, fontsize=fontsize, fontname=fontname, color=color, align=fitz.TEXT_ALIGN_LEFT)
-            if rc < 0:
-                print(f"Warning: Text insertion might not have fit perfectly in the box for page {page_num}. Return code: {rc}")
-                # Still consider it a modification even if it overflows slightly
-            
-            self.modified = True
-            return True
-        except Exception as e:
-            print(f"Error adding text box to page {page_num}: {e}")
-            return False
+    def add_line(self, page_index, start_point, end_point, color=(1, 0, 0), width=2.0):
+        """Add a line annotation to the PDF."""
+        if self.annotations:
+            return self.annotations.add_line_annotation(page_index, start_point, end_point, color, width)
+        return None
+
+    def add_circle(self, page_index, rect, color=(1, 0, 0), width=2.0):
+        """Add a circle annotation to the PDF."""
+        if self.annotations:
+            return self.annotations.add_circle_annotation(page_index, rect, color, width)
+        return None
+
+    def add_highlight(self, page_index, rect, color=(1, 1, 0)):
+        """Add a highlight annotation to the PDF."""
+        if self.annotations:
+            return self.annotations.add_highlight_annotation(page_index, rect, color)
+        return None
+
+    def add_stamp(self, page_index, rect, stamp_index=0):
+        """Add a stamp annotation to the PDF."""
+        if self.annotations:
+            return self.annotations.add_stamp_annotation(page_index, rect, stamp_index)
+        return None
+
+    def _get_annotations_filepath(self):
+        """Constructs the filepath for the annotations JSON file (Disabled)."""
+        return None
+
+
 

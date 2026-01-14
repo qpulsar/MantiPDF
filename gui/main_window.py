@@ -718,50 +718,50 @@ class MainWindow(QMainWindow):
             import traceback
             traceback.print_exc() # Print full traceback for detailed error info
 
-    # --- Placeholders for Edit Toolbar Actions ---
+    # --- Edit Toolbar Actions ---
     def add_note(self):
-        """Enable note adding mode in the PDF viewer."""
-        if not self.pdf_handler.doc:
-            print("Not eklemek için önce bir PDF dosyası açın.")
-            return
-            
-        # Toggle add note mode in the PDF viewer
-        is_note_mode = self.pdf_viewer.toggle_add_note_mode()
-        
-        # Update status bar to indicate note mode
-        if is_note_mode:
-            self.status_bar.showMessage("Not eklemek için PDF üzerinde bir noktaya tıklayın.")
-        else:
-            self.update_status_bar()  # Reset status bar
+        """Enable note adding mode."""
+        if self._check_doc_open():
+            self.pdf_viewer.set_annotation_mode("note")
+            self.status_bar.showMessage("Not eklemek için tıklayın.")
+
     def add_text(self):
-        print("Add Text (Not Implemented)")
+        """Enable text adding mode."""
+        if self._check_doc_open():
+            self.pdf_viewer.set_annotation_mode("text")
+            self.status_bar.showMessage("Metin eklemek için tıklayıp sürükleyin veya tıklayın.")
+
     def add_line(self):
-        print("Add Line (Not Implemented)")
+        """Enable line adding mode."""
+        if self._check_doc_open():
+            self.pdf_viewer.set_annotation_mode("line")
+            self.status_bar.showMessage("Çizgi eklemek için tıklayıp sürükleyin.")
+
     def highlight(self):
-        print("Highlight (Not Implemented)")
+        """Enable highlight mode."""
+        if self._check_doc_open():
+            self.pdf_viewer.set_annotation_mode("highlight")
+            self.status_bar.showMessage("Vurgulamak için metni seçin.")
+
     def add_circle(self):
-        """Add a circle annotation to the PDF."""
-        if not self.pdf_handler.doc:
-            print("Önce bir PDF dosyası açın.")
-            return
-
-        # Get the current page index
-        page_index = self.current_page_index
-
-        # Get the rectangle where the circle should be placed
-        rect = self.pdf_viewer.get_current_rect()
-
-        # Toggle add note mode in the PDF viewer
-        is_note_mode = self.pdf_viewer.toggle_add_note_mode()
-        
-        # Update status bar to indicate circle mode
-        if is_note_mode:
-            self.status_bar.showMessage("Çember eklemek için PDF üzerinde bir noktaya tıklayın.")
-        else:
-            self.update_status_bar()  # Reset status bar
+        """Enable circle adding mode."""
+        if self._check_doc_open():
+            self.pdf_viewer.set_annotation_mode("circle")
+            self.status_bar.showMessage("Çember eklemek için tıklayıp sürükleyin.")
 
     def add_stamp(self):
-        print("Add Stamp (Not Implemented)")
+        """Enable stamp adding mode."""
+        if self._check_doc_open():
+            self.pdf_viewer.set_annotation_mode("stamp")
+            self.status_bar.showMessage("Damga (ONAYLANDI) eklemek için tıklayın.")
+
+    def _check_doc_open(self):
+        """Helper to check if a document is open."""
+        if not self.pdf_handler or not self.pdf_handler.doc:
+            print("Lütfen önce bir PDF dosyası açın.")
+            self.status_bar.showMessage("Hata: PDF dosyası açık değil.")
+            return False
+        return True
 
     # --- Window close event ---
     def closeEvent(self, event):
