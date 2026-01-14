@@ -5,10 +5,7 @@ import sys
 block_cipher = None
 
 # Determine the base path
-if getattr(sys, 'frozen', False):
-    base_path = sys._MEIPASS
-else:
-    base_path = os.path.dirname(os.path.abspath(__file__))
+base_path = os.getcwd()
 
 a = Analysis(
     ['main.py'],
