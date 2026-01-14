@@ -1,7 +1,8 @@
 import sys
 import os # Import os
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import QSettings
+from PyQt6.QtWidgets import QApplication, QSplashScreen
+from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import QSettings, QTimer
 import qt_material # Import qt_material to get its path
 from qt_material import apply_stylesheet, set_icons_theme, get_theme
 
@@ -11,6 +12,16 @@ from gui.main_window import MainWindow
 def main():
     """Main function to run the MantiPDF application."""
     app = QApplication(sys.argv)
+
+    # Show splash screen
+    splash_path = os.path.join(os.path.dirname(__file__), "resources", "splash.png")
+    if os.path.exists(splash_path):
+        splash_pixmap = QPixmap(splash_path)
+        splash = QSplashScreen(splash_pixmap)
+        splash.show()
+        app.processEvents()
+    else:
+        splash = None
 
     # Apply the initial theme saved in settings
     settings = QSettings("MantiPDF", "Editor")
@@ -40,9 +51,17 @@ def main():
         import traceback
         traceback.print_exc() # Print full traceback for detailed error info
 
-    # Create and show the main window
+    # Create the main window
     window = MainWindow(app) # Pass the themed app instance
-    window.show()
+    
+    # Close splash and show main window after a short delay
+    def show_main_window():
+        if splash:
+            splash.finish(window)
+        window.show()
+    
+    # Show splash for 1.5 seconds
+    QTimer.singleShot(1500, show_main_window)
 
     # Start the application event loop
     sys.exit(app.exec())

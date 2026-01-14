@@ -7,6 +7,13 @@ class PropertiesBar(QWidget):
     
     properties_changed = pyqtSignal(dict)
     
+    # Type mappings for visibility logic
+    TEXT_TYPES = {"Text", "FreeText", "StickyNote", "note", "text"}
+    LINE_TYPES = {"Line", "PolyLine", "line"}
+    SHAPE_TYPES = {"Circle", "Square", "Polygon", "circle", "Ink"}
+    HIGHLIGHT_TYPES = {"Highlight", "highlight", "Underline", "StrikeOut"}
+    STAMP_TYPES = {"Stamp", "stamp"}
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.layout = QHBoxLayout(self)
@@ -16,7 +23,7 @@ class PropertiesBar(QWidget):
         # Default properties
         self.current_props = {
             "stroke_color": QColor(255, 0, 0),
-            "fill_color": QColor(255, 255, 0, 0), # Transparent yellow default
+            "fill_color": QColor(255, 255, 0, 0), # Transparent default
             "thickness": 2,
             "font_size": 12,
             "font_family": "helv",
@@ -27,16 +34,18 @@ class PropertiesBar(QWidget):
         self.hide() # Hidden by default, shown when a tool is active
         
     def setup_ui(self):
-        # Stroke Color
-        self.layout.addWidget(QLabel("Renk:"))
+        # Stroke Color (always visible when bar is shown)
+        self.stroke_label = QLabel("Renk:")
+        self.layout.addWidget(self.stroke_label)
         self.stroke_btn = QPushButton()
-        self.stroke_btn.setFixedSize(20, 20)
+        self.stroke_btn.setFixedSize(24, 24)
         self.update_color_btn(self.stroke_btn, self.current_props["stroke_color"])
         self.stroke_btn.clicked.connect(self.pick_stroke_color)
         self.layout.addWidget(self.stroke_btn)
         
         # Thickness
-        self.layout.addWidget(QLabel("Kalınlık:"))
+        self.thickness_label = QLabel("Kalınlık:")
+        self.layout.addWidget(self.thickness_label)
         self.thickness_spin = QSpinBox()
         self.thickness_spin.setRange(1, 20)
         self.thickness_spin.setMinimumWidth(50)
@@ -44,11 +53,11 @@ class PropertiesBar(QWidget):
         self.thickness_spin.valueChanged.connect(self.on_thickness_changed)
         self.layout.addWidget(self.thickness_spin)
         
-        # Fill Color (initially hidden or enabled based on tool)
+        # Fill Color
         self.fill_label = QLabel("Dolgu:")
         self.layout.addWidget(self.fill_label)
         self.fill_btn = QPushButton()
-        self.fill_btn.setFixedSize(20, 20)
+        self.fill_btn.setFixedSize(24, 24)
         self.update_color_btn(self.fill_btn, self.current_props["fill_color"])
         self.fill_btn.clicked.connect(self.pick_fill_color)
         self.layout.addWidget(self.fill_btn)
@@ -64,6 +73,8 @@ class PropertiesBar(QWidget):
         self.layout.addWidget(self.font_spin)
         
         # Font Family
+        self.font_family_label = QLabel("Yazı Tipi:")
+        self.layout.addWidget(self.font_family_label)
         self.font_family_combo = QComboBox()
         self.font_family_combo.addItems(["helv", "tiro", "cour", "symb", "zabd"])
         self.font_family_combo.setMinimumWidth(80)
@@ -121,7 +132,7 @@ class PropertiesBar(QWidget):
         """Updates the UI widgets with the given properties without emitting signals."""
         self.current_props = props.copy()
         
-        self.blockSignals(True)
+        # Block all signals
         self.thickness_spin.blockSignals(True)
         self.font_spin.blockSignals(True)
         self.font_family_combo.blockSignals(True)
@@ -140,43 +151,76 @@ class PropertiesBar(QWidget):
         if index >= 0:
             self.arrow_combo.setCurrentIndex(index)
             
+        # Unblock all signals
         self.arrow_combo.blockSignals(False)
         self.font_family_combo.blockSignals(False)
         self.font_spin.blockSignals(False)
         self.thickness_spin.blockSignals(False)
-        self.blockSignals(False)
 
-    def update_for_annot_type(self, annot_type):
-        """Updates control visibility based on the annotation type name (e.g., 'Circle', 'Line')."""
+    def configure_for_type(self, type_name):
+        """
+        Configures control visibility based on the type (tool mode or annotation type).
+        
+        Args:
+            type_name: Tool mode ("line", "circle", "text", "note", "highlight", "stamp", "select")
+                      or annotation type name ("FreeText", "Circle", "Line", etc.)
+                      or None to hide the bar.
+        """
+        if type_name is None:
+            self.hide()
+            return
+            
         self.show()
         
-        # Mapping fitz type names to our internal logic
-        is_text = annot_type in ["Text", "FreeText", "StickyNote", "note", "text"]
-        is_line = annot_type in ["Line", "PolyLine", "line"]
-        is_shape = annot_type in ["Circle", "Square", "Polygon", "circle"]
+        # Determine which controls to show based on the type
+        is_text = type_name in self.TEXT_TYPES
+        is_line = type_name in self.LINE_TYPES
+        is_shape = type_name in self.SHAPE_TYPES
+        is_highlight = type_name in self.HIGHLIGHT_TYPES
+        is_stamp = type_name in self.STAMP_TYPES
+        is_select = type_name == "select"
         
-        self.fill_label.setVisible(is_shape)
-        self.fill_btn.setVisible(is_shape)
+        # When select mode is active but nothing is selected, hide type-specific controls
+        # Common controls (Renk, Kalınlık) are always visible
+        self.stroke_label.setVisible(True)
+        self.stroke_btn.setVisible(True)
+        self.thickness_label.setVisible(not is_stamp and not is_highlight)
+        self.thickness_spin.setVisible(not is_stamp and not is_highlight)
         
-        self.font_label.setVisible(is_text)
-        self.font_spin.setVisible(is_text)
-        self.font_family_combo.setVisible(is_text)
+        # Fill: shapes and text (for background)
+        show_fill = is_shape or is_text
+        self.fill_label.setVisible(show_fill)
+        self.fill_btn.setVisible(show_fill)
         
-        self.arrow_label.setVisible(is_line)
-        self.arrow_combo.setVisible(is_line)
+        # Font controls: text only
+        show_font = is_text
+        self.font_label.setVisible(show_font)
+        self.font_spin.setVisible(show_font)
+        self.font_family_label.setVisible(show_font)
+        self.font_family_combo.setVisible(show_font)
+        
+        # Arrow: line only
+        show_arrow = is_line
+        self.arrow_label.setVisible(show_arrow)
+        self.arrow_combo.setVisible(show_arrow)
+        
+        # For select mode with nothing selected, show minimal controls
+        if is_select:
+            # Show only stroke color and thickness - will be updated when something is selected
+            self.fill_label.setVisible(False)
+            self.fill_btn.setVisible(False)
+            self.font_label.setVisible(False)
+            self.font_spin.setVisible(False)
+            self.font_family_label.setVisible(False)
+            self.font_family_combo.setVisible(False)
+            self.arrow_label.setVisible(False)
+            self.arrow_combo.setVisible(False)
 
+    # Keep backward compatibility
     def update_for_tool(self, tool_mode):
-        if tool_mode is None:
-             self.hide()
-             return
-
-        self.show()
-        if tool_mode == "select":
-             # Wait for selection signal to show specific properties
-             # or show all by default if that's preferred.
-             # User asked for unused ones to be hidden, so we start empty or with general ones.
-             self.update_for_annot_type("select") 
-             return
-        
-        # Re-use the logic by passing tool_mode as annot_type
-        self.update_for_annot_type(tool_mode)
+        """Backward compatible method - calls configure_for_type."""
+        self.configure_for_type(tool_mode)
+    
+    def update_for_annot_type(self, annot_type):
+        """Backward compatible method - calls configure_for_type."""
+        self.configure_for_type(annot_type)

@@ -15,6 +15,7 @@ from gui.toolbar_manager import ToolbarManager
 from gui.svg_utils import get_icon_for_theme
 from qt_material import apply_stylesheet, set_icons_theme, get_theme
 from gui.properties_bar import PropertiesBar
+from gui.about_dialog import AboutDialog
 
 class MainWindow(QMainWindow):
     """Main application window for MantiPDF Editor."""
@@ -56,6 +57,7 @@ class MainWindow(QMainWindow):
         # Connect properties bar signals
         self.properties_bar.properties_changed.connect(self.pdf_viewer.set_properties)
         self.pdf_viewer.annotation_selected.connect(self.on_annotation_selected)
+        self.pdf_viewer.annotation_deselected.connect(self.on_annotation_deselected)
 
         # Initialize Thumbnail view
         self.thumbnail_view = ThumbnailView(self)
@@ -127,6 +129,17 @@ class MainWindow(QMainWindow):
         # Restore window geometry and state (including toolbars and docks)
         self.restoreGeometry(self.settings.value("geometry", b'')) # Provide default empty QByteArray
         self.restoreState(self.settings.value("windowState", b'')) # Provide default empty QByteArray
+        
+        # Ensure window is visible on screen
+        geometry = self.geometry()
+        screen = self.screen().availableGeometry()
+        if not screen.intersects(geometry):
+            self.setGeometry(screen.center().x() - 600, screen.center().y() - 400, 1200, 800)
+            # Center on screen
+            frameGm = self.frameGeometry()
+            screen = QApplication.primaryScreen().availableGeometry().center()
+            frameGm.moveCenter(screen)
+            self.move(frameGm.topLeft())
 
         # Restore zoom level
         saved_scale = self.settings.value("zoomScale", 1.0) # Default to 100%
@@ -202,6 +215,9 @@ class MainWindow(QMainWindow):
         self.add_menu_action(tools_menu, "Merge PDF in Folder...", self.merge_pdfs_in_folder)
         self.add_menu_action(tools_menu, "Split PDF...", self.split_pdf, icon_name="tool-split")
 
+        # --- Help Menu ---
+        help_menu = menu_bar.addMenu("Help")
+        self.add_menu_action(help_menu, "Hakkında...", self.show_about_dialog, icon_name="help-about")
 
     def add_menu_action(self, menu, text, slot, shortcut=None, icon_name=None):
         """Helper to add an action to a menu."""
@@ -759,9 +775,19 @@ class MainWindow(QMainWindow):
     def on_annotation_selected(self, annot_type, props):
         """Update properties bar when an annotation is selected."""
         self.properties_bar.set_current_properties(props)
-        self.properties_bar.update_for_annot_type(annot_type)
+        self.properties_bar.configure_for_type(annot_type)
+    
+    def on_annotation_deselected(self):
+        """Reset properties bar when selection is cleared."""
+        # Keep the bar visible but reset to select mode (minimal controls)
+        self.properties_bar.configure_for_type("select")
 
-if __name__ == "__main__":
+    def show_about_dialog(self):
+        """Shows the About dialog."""
+        dialog = AboutDialog(self)
+        dialog.exec()
+
+    # --- Edit Toolbar Actions ---
     def select_tool(self):
         """Enable selection mode."""
         if self._check_doc_open():
@@ -841,7 +867,12 @@ if __name__ == "__main__":
 
     def _update_edit_buttons(self, active_mode):
         """Update the checked state of edit buttons based on the active mode."""
-        self.properties_bar.update_for_tool(active_mode)
+        self.properties_bar.configure_for_type(active_mode)
+        
+        # Load tool-specific properties into the properties bar
+        if active_mode and active_mode != "select" and active_mode in self.pdf_viewer.tool_properties:
+            self.properties_bar.set_current_properties(self.pdf_viewer.tool_properties[active_mode])
+        
         for mode, button in self.edit_buttons.items():
             if mode != active_mode:
                 button.blockSignals(True)

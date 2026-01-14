@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=MantıPDF
+Comment=PDF Editor - PDF'ye lezzet katan editör
+Exec=MantıPDF %F
+Icon=mantipdf
+Type=Application
+Categories=Office;Utility;
+MimeType=application/pdf;
+Terminal=false
+StartupNotify=true

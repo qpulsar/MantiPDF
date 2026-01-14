@@ -1,5 +1,26 @@
+# IDE
 .idea
+.vscode
+
+# Python
 .venv
+venv
 *.pyc
 __pycache__
 *.log
+*.egg-info
+
+# Build artifacts
+build/
+dist/
+*.spec.bak
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Installer outputs
+*.exe
+*.dmg
+*.AppImage
+AppDir/
