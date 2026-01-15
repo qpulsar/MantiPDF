@@ -2,7 +2,7 @@
 
 ; Application info
 Name "MantıPDF"
-OutFile "MantıPDF-Setup.exe"
+OutFile "MantiPDF-Setup.exe"
 InstallDir "$PROGRAMFILES\MantıPDF"
 InstallDirRegKey HKLM "Software\MantıPDF" "Install_Dir"
 
