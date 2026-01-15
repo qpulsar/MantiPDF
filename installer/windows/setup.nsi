@@ -3,8 +3,8 @@
 ; Application info
 Name "MantıPDF"
 OutFile "MantiPDF-Setup.exe"
-InstallDir "$PROGRAMFILES\MantıPDF"
-InstallDirRegKey HKLM "Software\MantıPDF" "Install_Dir"
+InstallDir "$PROGRAMFILES\MantiPDF"
+InstallDirRegKey HKLM "Software\MantiPDF" "Install_Dir"
 
 ; Request admin privileges
 RequestExecutionLevel admin
@@ -33,23 +33,23 @@ Section "MantıPDF" SecMain
     SetOutPath $INSTDIR
     
     ; Copy files from PyInstaller output
-    File /r "..\..\dist\MantıPDF\*.*"
+    File /r "..\..\dist\MantiPDF\*.*"
     
     ; Create shortcuts
     CreateDirectory "$SMPROGRAMS\MantıPDF"
-    CreateShortcut "$SMPROGRAMS\MantıPDF\MantıPDF.lnk" "$INSTDIR\MantıPDF.exe"
+    CreateShortcut "$SMPROGRAMS\MantıPDF\MantıPDF.lnk" "$INSTDIR\MantiPDF.exe"
     CreateShortcut "$SMPROGRAMS\MantıPDF\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
-    CreateShortcut "$DESKTOP\MantıPDF.lnk" "$INSTDIR\MantıPDF.exe"
+    CreateShortcut "$DESKTOP\MantıPDF.lnk" "$INSTDIR\MantiPDF.exe"
     
     ; Write registry keys
-    WriteRegStr HKLM "Software\MantıPDF" "Install_Dir" "$INSTDIR"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MantıPDF" "DisplayName" "MantıPDF"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MantıPDF" "UninstallString" '"$INSTDIR\Uninstall.exe"'
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MantıPDF" "DisplayIcon" "$INSTDIR\MantıPDF.exe"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MantıPDF" "Publisher" "Mehmet Emin Korkusuz"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MantıPDF" "DisplayVersion" "1.0.0"
-    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MantıPDF" "NoModify" 1
-    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MantıPDF" "NoRepair" 1
+    WriteRegStr HKLM "Software\MantiPDF" "Install_Dir" "$INSTDIR"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MantiPDF" "DisplayName" "MantıPDF"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MantiPDF" "UninstallString" '"$INSTDIR\Uninstall.exe"'
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MantiPDF" "DisplayIcon" "$INSTDIR\MantiPDF.exe"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MantiPDF" "Publisher" "Mehmet Emin Korkusuz"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MantiPDF" "DisplayVersion" "1.0.0"
+    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MantiPDF" "NoModify" 1
+    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MantiPDF" "NoRepair" 1
     
     ; Create uninstaller
     WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -66,6 +66,6 @@ Section "Uninstall"
     Delete "$DESKTOP\MantıPDF.lnk"
     
     ; Remove registry keys
-    DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MantıPDF"
-    DeleteRegKey HKLM "Software\MantıPDF"
+    DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\MantiPDF"
+    DeleteRegKey HKLM "Software\MantiPDF"
 SectionEnd

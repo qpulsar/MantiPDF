@@ -45,7 +45,7 @@ jobs:
       - name: Build Windows executable
         if: runner.os == 'Windows'
         run: |
-          pyinstaller --noconfirm --onedir --windowed --name "MantıPDF" --icon "resources/icon.ico" --add-data "resources;resources" --add-data "gui/icons;gui/icons" main.py
+          pyinstaller --noconfirm --onedir --windowed --name "MantiPDF" --icon "resources/icon.ico" --add-data "resources;resources" --add-data "gui/icons;gui/icons" main.py
 
       - name: Install NSIS
         if: runner.os == 'Windows'
