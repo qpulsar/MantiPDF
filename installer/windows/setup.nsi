@@ -1,3 +1,4 @@
+Unicode true
 !include "MUI2.nsh"
 
 ; Application info
