@@ -2,7 +2,7 @@ import sys
 import os # Import os
 from PyQt6.QtWidgets import QApplication, QSplashScreen
 from PyQt6.QtGui import QPixmap
-from PyQt6.QtCore import QSettings, QTimer
+from PyQt6.QtCore import QSettings, QTimer, Qt
 import qt_material # Import qt_material to get its path
 from qt_material import apply_stylesheet, set_icons_theme, get_theme
 
@@ -17,8 +17,11 @@ def main():
     splash_path = os.path.join(os.path.dirname(__file__), "resources", "splash.png")
     if os.path.exists(splash_path):
         splash_pixmap = QPixmap(splash_path)
+        # Scale the splash image to a reasonable size (e.g., 500x500)
+        splash_pixmap = splash_pixmap.scaled(500, 500, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         splash = QSplashScreen(splash_pixmap)
         splash.show()
+        splash.showMessage("Başlatılıyor...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.white)
         app.processEvents()
     else:
         splash = None
@@ -26,6 +29,10 @@ def main():
     # Apply the initial theme saved in settings
     settings = QSettings("MantiPDF", "Editor")
     initial_theme = settings.value("theme", "dark_teal")
+    if splash:
+        splash.showMessage(f"Tema yükleniyor: {initial_theme}", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.white)
+        app.processEvents()
+        
     try:
         # Construct full path to the theme file
         qt_material_path = qt_material.__path__[0]
@@ -51,12 +58,17 @@ def main():
         import traceback
         traceback.print_exc() # Print full traceback for detailed error info
 
+    if splash:
+        splash.showMessage("Ana pencere hazırlanıyor...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.white)
+        app.processEvents()
+
     # Create the main window
     window = MainWindow(app) # Pass the themed app instance
     
     # Close splash and show main window after a short delay
     def show_main_window():
         if splash:
+            splash.showMessage("Tamamlandı.", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.white)
             splash.finish(window)
         window.show()
     
