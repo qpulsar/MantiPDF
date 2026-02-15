@@ -101,4 +101,4 @@ Bu proje aşağıdaki teknolojiler kullanılarak geliştirilmiştir:
 
 ---
 
-> *MantıPDF, kodlamanın lezzetli halidir.* 🥟
+> *MantıPDF, kodlamanın lezzetli halidir.* 🥟 
