@@ -658,7 +658,8 @@ class MainWindow(QMainWindow):
             page_ranges = dialog.get_page_ranges()
             
             # Split the PDF
-            created_files = self.pdf_handler.split_pdf(output_dir, page_ranges)
+            split_all = dialog.split_all_radio.isChecked()
+            created_files = self.pdf_handler.split_pdf(output_dir, split_all, page_ranges)
             
             if created_files:
                 # Show success message with the number of created files

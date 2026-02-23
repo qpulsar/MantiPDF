@@ -236,7 +236,7 @@ class PDFHandler:
             print(f"Error merging document {other_pdf_path}: {e}")
             return False
             
-    def split_pdf(self, output_dir: str, split_all: bool, page_ranges: list[tuple[int, int]] | None) -> tuple[bool, str]:
+    def split_pdf(self, output_dir: str, split_all: bool, page_ranges: list[tuple[int, int]] | None) -> list[str]:
         """Splits the current PDF based on the provided options.
 
         Args:
@@ -246,15 +246,17 @@ class PDFHandler:
                          to split by range. Used if split_all is False.
 
         Returns:
-            A tuple (success: bool, message: str).
+            A list of created file paths. Returns an empty list on failure.
         """
         if not self.doc or not self.filepath:
-            return False, "No document open to split."
+            print("No document open to split.")
+            return []
         if not os.path.isdir(output_dir):
-            return False, f"Output directory does not exist: {output_dir}"
+            print(f"Output directory does not exist: {output_dir}")
+            return []
 
         base_filename = os.path.splitext(os.path.basename(self.filepath))[0]
-        split_count = 0
+        created_files = []
 
         try:
             if split_all:
@@ -265,12 +267,11 @@ class PDFHandler:
                     output_filename = os.path.join(output_dir, f"{base_filename}_page_{i + 1}.pdf")
                     new_doc.save(output_filename)
                     new_doc.close()
-                    split_count += 1
-                message = f"{split_count} sayfa başarıyla ayrı PDF dosyalarına bölündü."
+                    created_files.append(output_filename)
+                print(f"{len(created_files)} sayfa başarıyla ayrı PDF dosyalarına bölündü.")
 
             elif page_ranges:
                 # Split by ranges
-                range_num = 1
                 for start_page, end_page in page_ranges:
                     if 0 <= start_page < self.page_count and 0 <= end_page < self.page_count and start_page <= end_page:
                         new_doc = fitz.open()
@@ -283,21 +284,20 @@ class PDFHandler:
                         output_filename = os.path.join(output_dir, f"{base_filename}_{range_desc}.pdf")
                         new_doc.save(output_filename)
                         new_doc.close()
-                        split_count += 1
-                        range_num += 1
+                        created_files.append(output_filename)
                     else:
                         print(f"Skipping invalid page range: {start_page+1}-{end_page+1}")
-                message = f"{split_count} PDF dosyası belirtilen aralıklara göre başarıyla oluşturuldu."
+                print(f"{len(created_files)} PDF dosyası belirtilen aralıklara göre başarıyla oluşturuldu.")
             
             else:
-                return False, "Geçersiz bölme seçeneği."
+                print("Geçersiz bölme seçeneği.")
+                return []
 
-            return True, message
+            return created_files
 
         except Exception as e:
-            error_message = f"PDF bölme sırasında hata oluştu: {e}"
-            print(error_message)
-            return False, error_message
+            print(f"PDF bölme sırasında hata oluştu: {e}")
+            return created_files # Return what we have so far
 
     def extract_text(self, page_num: int) -> str | None:
         """Extracts text from a specific page."""

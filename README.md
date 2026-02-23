@@ -49,6 +49,35 @@ Kısaca: **MANTI** 🥟
 
 Projeyi bilgisayarınıza klonlayın ve gerekli kütüphaneleri yükleyin:
 
+### [MantıPDF-macOS.dmg](https://github.com/KorkusuzGenTr/MantiPDF/releases/latest/download/MantıPDF-macOS.dmg)
+
+---
+
+## 🛡️ Güvenlik ve Kurulum
+
+GitHub üzerinden indirilen sürümler dijital olarak imzalanmadığı için işletim sisteminiz güvenlik uyarısı verebilir. Bu uyarıları aşağıdaki adımlarla kolayca geçebilirsiniz:
+
+###  macOS (Gatekeeper)
+Uygulamayı açmaya çalıştığınızda "tanınmayan geliştirici" uyarısı alırsanız:
+1. Uygulamaya (veya DMG içindeki dosyaya) **sağ tıklayın**.
+2. **Aç (Open)** seçeneğine tıklayın.
+3. Çıkan diyalog kutusunda tekrar **Aç** butonuna basın.
+*Bu işlemden sonra uygulama güvenli olarak işaretlenecek ve bir daha uyarı çıkmayacaktır.*
+
+### 🪟 Windows (SmartScreen)
+"Windows bilgisayarınızı korudu" uyarısı alırsanız:
+1. Penceredeki **Ek bilgi (More info)** bağlantısına tıklayın.
+2. Sağ altta beliren **Yine de çalıştır (Run anyway)** butonuna tıklayın.
+
+### 🐧 Linux (AppImage)
+İndirdiğiniz `.AppImage` dosyasını çalıştırmak için izin vermeniz gerekebilir:
+```bash
+chmod +x MantıPDF-Linux.AppImage
+./MantıPDF-Linux.AppImage
+```
+
+---
+
 1. **Repoyu Klonlayın:**
    ```bash
    git clone https://github.com/qpulsar/MantiPDF.git
