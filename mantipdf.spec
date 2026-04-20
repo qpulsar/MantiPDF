@@ -39,7 +39,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='MantıPDF',
+    name='MantiPDF',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -61,19 +61,19 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='MantıPDF',
+    name='MantiPDF',
 )
 
 # macOS app bundle
 if sys.platform == 'darwin':
     app = BUNDLE(
         coll,
-        name='MantıPDF.app',
+        name='MantiPDF.app',
         icon='resources/icon.icns',
         bundle_identifier='tr.gen.korkusuz.mantipdf',
         info_plist={
-            'CFBundleName': 'MantıPDF',
-            'CFBundleDisplayName': 'MantıPDF',
+            'CFBundleName': 'MantiPDF',
+            'CFBundleDisplayName': 'MantiPDF',
             'CFBundleGetInfoString': 'PDF Editor',
             'CFBundleIdentifier': 'tr.gen.korkusuz.mantipdf',
             'CFBundleVersion': '1.0.0',

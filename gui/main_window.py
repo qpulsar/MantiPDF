@@ -2,10 +2,10 @@ import sys
 import os # Import os
 import qt_material # Import qt_material to get its path
 
-from PyQt6.QtGui import QAction, QIcon, QPainter
+from PyQt6.QtGui import QAction, QIcon, QPainter, QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent
 from PyQt6.QtWidgets import QMainWindow, QApplication, QLabel, QMenu, QMenuBar, QFileDialog, QComboBox, QPushButton, \
-    QDockWidget, QWidget, QVBoxLayout, QHBoxLayout
-from PyQt6.QtCore import Qt, QSettings
+    QDockWidget, QWidget, QVBoxLayout, QHBoxLayout, QMessageBox
+from PyQt6.QtCore import Qt, QSettings, QUrl
 from PyQt6.QtPrintSupport import QPrinter, QPrintDialog, QPrintPreviewDialog
 
 from core.pdf_handler import PDFHandler 
@@ -159,6 +159,14 @@ class MainWindow(QMainWindow):
         # Connect overscroll signals for page navigation
         self.pdf_viewer.overscrollNext.connect(self.next_page)
         self.pdf_viewer.overscrollPrevious.connect(self.previous_page)
+
+        # Drag-and-drop support
+        self.setAcceptDrops(True)
+        self._drop_overlay = QLabel(self.central_container)
+        self._drop_overlay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._drop_overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._drop_overlay.setWordWrap(True)
+        self._drop_overlay.hide()
 
     def create_menu_bar(self):
         """Create the application's menu bar."""
@@ -598,12 +606,12 @@ class MainWindow(QMainWindow):
 
         filepath, _ = QFileDialog.getOpenFileName(self, "Select PDF to Merge", "", "PDF Files (*.pdf)")
         if filepath:
-            if self.pdf_handler.merge_pdf(filepath):
+            if self.pdf_handler.merge_document(filepath):
                  self.update_thumbnails()
                  self.update_status_bar()
-                 print(f"Successfully merged {filepath}") # TODO: Status bar
+                 self.status_bar.showMessage(f"Birleştirildi: {os.path.basename(filepath)}")
             else:
-                 print(f"Failed to merge {filepath}") # TODO: Error dialog
+                 QMessageBox.warning(self, "Hata", f"Dosya birleştirilemedi:\n{filepath}")
                  
     def merge_pdfs_in_folder(self):
         """Seçilen klasördeki PDF dosyalarını kullanıcı sırasına göre birleştirir."""
@@ -629,7 +637,7 @@ class MainWindow(QMainWindow):
                         return
                 merged_count = 0
                 for path in pdf_paths[start_index:]:
-                    if self.pdf_handler.merge_pdf(path):
+                    if self.pdf_handler.merge_document(path):
                         merged_count += 1
                     else:
                         print(f"Merge failed: {path}")
@@ -887,6 +895,114 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("Hata: PDF dosyası açık değil.")
             return False
         return True
+
+    # --- Resize ---
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if not self._drop_overlay.isHidden():
+            self._drop_overlay.setGeometry(self.central_container.rect())
+
+    # --- Drag and Drop ---
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasUrls():
+            pdf_urls = [u for u in event.mimeData().urls() if u.toLocalFile().lower().endswith('.pdf')]
+            if pdf_urls:
+                event.acceptProposedAction()
+                self._show_drop_overlay(len(pdf_urls))
+                return
+        event.ignore()
+
+    def dragMoveEvent(self, event: QDragMoveEvent):
+        if event.mimeData().hasUrls():
+            pdf_urls = [u for u in event.mimeData().urls() if u.toLocalFile().lower().endswith('.pdf')]
+            if pdf_urls:
+                event.acceptProposedAction()
+                return
+        event.ignore()
+
+    def dragLeaveEvent(self, event: QDragLeaveEvent):
+        self._hide_drop_overlay()
+
+    def dropEvent(self, event: QDropEvent):
+        self._hide_drop_overlay()
+        pdf_paths = [u.toLocalFile() for u in event.mimeData().urls()
+                     if u.toLocalFile().lower().endswith('.pdf')]
+        if not pdf_paths:
+            return
+        event.acceptProposedAction()
+        self._handle_dropped_files(pdf_paths)
+
+    def _show_drop_overlay(self, file_count: int):
+        if self.pdf_handler.doc:
+            text = (f"{file_count} PDF dosyası\n\nYeni belge olarak aç\nveya mevcut belgeye ekle")
+        else:
+            text = f"{file_count} PDF dosyası\n\nBırakın: Aç"
+        self._drop_overlay.setText(text)
+        self._drop_overlay.setStyleSheet(
+            "background-color: rgba(0, 0, 0, 160);"
+            "color: white;"
+            "font-size: 20px;"
+            "border: 3px dashed rgba(255,255,255,180);"
+            "border-radius: 12px;"
+            "padding: 20px;"
+        )
+        self._drop_overlay.setGeometry(self.central_container.rect())
+        self._drop_overlay.show()
+        self._drop_overlay.raise_()
+
+    def _hide_drop_overlay(self):
+        self._drop_overlay.hide()
+
+    def _handle_dropped_files(self, pdf_paths: list):
+        if not self.pdf_handler.doc:
+            # No document open — open first, then merge the rest
+            first = pdf_paths[0]
+            if self.pdf_handler.open_document(first):
+                self.current_page_index = 0
+                self.display_page(self.current_page_index)
+                self.update_thumbnails()
+                self.update_status_bar()
+                self.setWindowTitle(f"MantiPDF Editor - {self.pdf_handler.filepath}")
+                for extra in pdf_paths[1:]:
+                    self._merge_file(extra)
+            else:
+                QMessageBox.warning(self, "Hata", f"Dosya açılamadı:\n{first}")
+            return
+
+        # A document is already open — ask what to do
+        names = "\n".join(os.path.basename(p) for p in pdf_paths)
+        msg = QMessageBox(self)
+        msg.setWindowTitle("PDF Bırakıldı")
+        msg.setText(f"Aşağıdaki dosyalar bırakıldı:\n{names}\n\nNe yapmak istiyorsunuz?")
+        open_btn = msg.addButton("Yeni Belge Olarak Aç", QMessageBox.ButtonRole.AcceptRole)
+        add_btn = msg.addButton("Mevcut Belgeye Ekle", QMessageBox.ButtonRole.ActionRole)
+        msg.addButton("İptal", QMessageBox.ButtonRole.RejectRole)
+        msg.exec()
+
+        clicked = msg.clickedButton()
+        if clicked == open_btn:
+            first = pdf_paths[0]
+            if self.pdf_handler.open_document(first):
+                self.current_page_index = 0
+                self.display_page(self.current_page_index)
+                self.update_thumbnails()
+                self.update_status_bar()
+                self.setWindowTitle(f"MantiPDF Editor - {self.pdf_handler.filepath}")
+                for extra in pdf_paths[1:]:
+                    self._merge_file(extra)
+            else:
+                QMessageBox.warning(self, "Hata", f"Dosya açılamadı:\n{first}")
+        elif clicked == add_btn:
+            for path in pdf_paths:
+                self._merge_file(path)
+
+    def _merge_file(self, filepath: str):
+        if self.pdf_handler.merge_document(filepath):
+            self.update_thumbnails()
+            self.update_status_bar()
+            self.status_bar.showMessage(f"Eklendi: {os.path.basename(filepath)}")
+        else:
+            QMessageBox.warning(self, "Hata", f"Dosya eklenemedi:\n{filepath}")
 
     # --- Window close event ---
     def closeEvent(self, event):

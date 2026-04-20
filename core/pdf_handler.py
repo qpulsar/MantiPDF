@@ -1,7 +1,7 @@
 import fitz  # PyMuPDF
 import os
 from PyQt6.QtGui import QPixmap, QImage
-from PyQt6.QtCore import Qt, QRectF
+from PyQt6.QtCore import Qt
 
 from core.pdf_annotations import PDFAnnotations
 
@@ -351,25 +351,6 @@ class PDFHandler:
             print(f"Error saving page as image: {e}")
             return False
             
-    def add_note(self, page_index, position, content, username=None):
-        """Add a note annotation to the PDF.
-        
-        Args:
-            page_index: The 0-based index of the page.
-            position: The position (QPoint) where the note should be placed.
-            content: The content of the note.
-            username: The username of the note creator.
-            
-        Returns:
-            The annotation object if successful, None otherwise.
-        """
-        if not self.doc or not self.annotations or not (0 <= page_index < self.page_count):
-            return None
-            
-        # Create a small rectangle around the position
-        x, y = position.x(), position.y()
-        rect = QRectF(x - 10, y - 10, 20, 20)  # 20x20 rectangle centered at position
-        
     def add_note(self, page_index, rect, content, username=None, color=(1, 1, 0)):
         """Add a sticky note annotation to the PDF."""
         if self.annotations:

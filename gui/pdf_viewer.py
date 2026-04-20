@@ -106,7 +106,10 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
         
         self.pdf_handler = pdf_handler
         self.current_page_index = page_index
-        self.current_fitz_page = self.pdf_handler.doc[page_index] if self.pdf_handler.doc else None
+        if self.pdf_handler.doc and 0 <= page_index < self.pdf_handler.doc.page_count:
+            self.current_fitz_page = self.pdf_handler.doc[page_index]
+        else:
+            self.current_fitz_page = None
         self.overscroll_delta = 0
         self.image_label.move(0, 0)
 
@@ -140,7 +143,10 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
             except:
                 pass
 
-            self.current_fitz_page = self.pdf_handler.doc[self.current_page_index] if self.pdf_handler.doc else None
+            if self.pdf_handler.doc and 0 <= self.current_page_index < self.pdf_handler.doc.page_count:
+                self.current_fitz_page = self.pdf_handler.doc[self.current_page_index]
+            else:
+                self.current_fitz_page = None
             
             if old_xref and self.current_fitz_page:
                 self.selected_annot = None
@@ -795,12 +801,17 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
 
         if event.type() == event.Type.KeyPress:
             if event.key() == Qt.Key.Key_Delete and self.selected_annot:
-                # Remove the selected annotation
-                self.pdf_handler.doc[self.current_page_index].delete_annot(self.selected_annot)
-                self.pdf_handler.modified = True
-                self.selected_annot = None
-                self.update_display()
-                self.parent_window.status_bar.showMessage("Nesne silindi.")
+                try:
+                    if self.current_fitz_page:
+                        self.current_fitz_page.delete_annot(self.selected_annot)
+                        self.pdf_handler.modified = True
+                        self.selected_annot = None
+                        self.annotation_deselected.emit()
+                        self.update_display()
+                        self.parent_window.status_bar.showMessage("Nesne silindi.")
+                except Exception as e:
+                    print(f"Error deleting annotation via Delete key: {e}")
+                    self.selected_annot = None
                 return True
 
         return super().eventFilter(obj, event)
@@ -848,8 +859,8 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
         # Calculate screen coordinates for the annotation rect
         offset_x = (self.image_label.width() - (self.current_pixmap.width() if self.current_pixmap else 0)) / 2
         offset_y = (self.image_label.height() - (self.current_pixmap.height() if self.current_pixmap else 0)) / 2
-        
-        r = self.selected_annot.rect
+
+        # r is already validated and set above in the try block
         dx, dy = self.drag_displacement_pdf
         
         rect = QRectF((r.x0 + dx) * self.current_scale + offset_x, 
