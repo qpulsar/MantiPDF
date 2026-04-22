@@ -1,6 +1,9 @@
 import sys
 import os # Import os
 import qt_material # Import qt_material to get its path
+import logging
+
+logger = logging.getLogger("main_window")
 
 from PyQt6.QtGui import QAction, QIcon, QPainter, QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent
 from PyQt6.QtWidgets import QMainWindow, QApplication, QLabel, QMenu, QMenuBar, QFileDialog, QComboBox, QPushButton, \
@@ -16,6 +19,13 @@ from gui.svg_utils import get_icon_for_theme
 from qt_material import apply_stylesheet, set_icons_theme, get_theme
 from gui.properties_bar import PropertiesBar
 from gui.about_dialog import AboutDialog
+from gui.ai_settings_dialog import AISettingsDialog
+from core.ai_handler import AIHandler
+from gui.ai_assistant_dock import AIAssistantDock
+from core.professional_handler import ProfessionalHandler
+from core.form_handler import FormHandler
+from PyQt6.QtWidgets import QMainWindow, QApplication, QLabel, QMenu, QMenuBar, QFileDialog, QComboBox, QPushButton, \
+    QDockWidget, QWidget, QVBoxLayout, QHBoxLayout, QMessageBox, QScrollArea
 
 class MainWindow(QMainWindow):
     """Main application window for MantiPDF Editor."""
@@ -41,6 +51,11 @@ class MainWindow(QMainWindow):
         # Initialize PDF viewer
         self.pdf_viewer = PDFViewer(self)
         self.edit_buttons = {} # Store edit buttons for toggle management
+        
+        # Initialize AI Handler
+        self.ai_handler = AIHandler()
+        self.prof_handler = ProfessionalHandler(self.ai_handler)
+        self.form_handler = FormHandler(self.ai_handler)
         
         # Setup central area with Properties Bar
         self.central_container = QWidget()
@@ -112,6 +127,15 @@ class MainWindow(QMainWindow):
         self.move_down_btn.clicked.connect(lambda: self.move_selected_page("down"))
         self.move_to_bottom_btn.clicked.connect(lambda: self.move_selected_page("bottom"))
 
+        # Initialize AI Assistant Dock
+        self.ai_assistant_content = AIAssistantDock(self)
+        self.ai_dock = QDockWidget("AI Asistanı", self)
+        self.ai_dock.setObjectName("ai_assistant_dock")
+        self.ai_dock.setWidget(self.ai_assistant_content)
+        self.ai_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.ai_dock)
+        self.ai_dock.hide() # Hidden by default
+
         # Initialize toolbar manager
         self.toolbar_manager = ToolbarManager(self)
         
@@ -149,7 +173,7 @@ class MainWindow(QMainWindow):
             # but we might not have a page yet. set_scale handles this.
             self.pdf_viewer.set_scale(scale_factor)
         except (ValueError, TypeError): # Catch TypeError if value isn't convertible
-            print(f"Warning: Could not restore zoom scale from settings ('{saved_scale}'). Using default.")
+            logger.warning(f"Warning: Could not restore zoom scale from settings ('{saved_scale}'). Using default.")
             self.pdf_viewer.set_scale(1.0)
 
 
@@ -222,6 +246,24 @@ class MainWindow(QMainWindow):
         self.add_menu_action(tools_menu, "Merge PDF...", self.merge_pdf, icon_name="tool-merge")
         self.add_menu_action(tools_menu, "Merge PDF in Folder...", self.merge_pdfs_in_folder)
         self.add_menu_action(tools_menu, "Split PDF...", self.split_pdf, icon_name="tool-split")
+
+        # --- AI Menu ---
+        ai_menu = menu_bar.addMenu("AI")
+        self.add_menu_action(ai_menu, "AI Ayarları...", self.show_ai_settings, icon_name="settings")
+        ai_menu.addSeparator()
+        self.add_menu_action(ai_menu, "Belgeyi Özetle", self.ai_summarize_doc, icon_name="edit-add-note")
+        self.add_menu_action(ai_menu, "AI Sohbet...", self.toggle_ai_assistant, icon_name="help-about")
+        
+        # --- Professional AI Menu ---
+        prof_menu = menu_bar.addMenu("Profesyonel")
+        self.add_menu_action(prof_menu, "Sözleşme Analizi", self.ai_analyze_contract, icon_name="file-save")
+        self.add_menu_action(prof_menu, "Fatura Veri Çıkarımı", self.ai_extract_invoice, icon_name="tool-split")
+        self.add_menu_action(prof_menu, "Form Doldurma Asistanı", self.ai_form_assistant, icon_name="edit-copy")
+
+        # --- Analysis AI Menu ---
+        analysis_menu = menu_bar.addMenu("Analiz")
+        self.add_menu_action(analysis_menu, "Belge Karşılaştır (AI Diff)", self.ai_compare_docs, icon_name="tool-merge")
+        self.add_menu_action(analysis_menu, "Okunabilirlik Analizi", self.ai_analyze_readability)
 
         # --- Help Menu ---
         help_menu = menu_bar.addMenu("Help")
@@ -330,8 +372,11 @@ class MainWindow(QMainWindow):
                 self.update_thumbnails() # Update thumbnails after opening
                 self.update_status_bar()
                 self.setWindowTitle(f"MantiPDF Editor - {self.pdf_handler.filepath}")
+                
+                # Trigger AI indexing in background
+                self.ai_handler.prepare_pdf_context(self.pdf_handler.doc, filepath)
             else:
-                print("Error opening PDF.") # TODO: Show error dialog
+                QMessageBox.critical(self, "Hata", "PDF dosyası açılamadı.")
                 self.setWindowTitle("MantiPDF Editor")
                 self.pdf_viewer.clear_display()
                 self.thumbnail_view.clear_thumbnails()
@@ -349,7 +394,7 @@ class MainWindow(QMainWindow):
     def save_pdf_as(self):
         """Saves the PDF file with a new name."""
         if not self.pdf_handler.doc:
-            print("No document open to save.")
+            self.status_bar.showMessage("Kaydedilecek belge yok.")
             return
 
         filepath, _ = QFileDialog.getSaveFileName(self, "Save PDF As...", self.pdf_handler.filepath or ".", "PDF Files (*.pdf)")
@@ -357,9 +402,9 @@ class MainWindow(QMainWindow):
             if self.pdf_handler.save_document(filepath):
                 self.update_status_bar()
                 self.setWindowTitle(f"MantiPDF Editor - {self.pdf_handler.filepath}")
-                print(f"Document saved as {filepath}.") # TODO: Status bar message
+                self.status_bar.showMessage(f"Belge kaydedildi: {filepath}")
             else:
-                print(f"Failed to save document to {filepath}.") # TODO: Error dialog
+                QMessageBox.critical(self, "Hata", f"Belge kaydedilemedi: {filepath}")
 
     def display_page(self, page_index):
         """Displays the page at the given index."""
@@ -469,7 +514,7 @@ class MainWindow(QMainWindow):
     def print_pdf(self):
         """Prints the PDF file using QPrinter and QPrintDialog."""
         if not self.pdf_handler.doc:
-            print("No document open to print.")
+            self.status_bar.showMessage("Yazdırılacak belge yok.")
             return
             
         printer = QPrinter(QPrinter.PrinterMode.HighResolution)
@@ -503,11 +548,12 @@ class MainWindow(QMainWindow):
                 
                 # Print the document
                 self._print_document(printer, from_page, to_page)
-                print(f"Document printed successfully. Pages {from_page+1} to {to_page+1}")
+                self.status_bar.showMessage(f"Yazdırıldı: Sayfa {from_page+1} - {to_page+1}")
             except Exception as e:
-                print(f"Error printing document: {e}")
+                logger.error(f"Error printing document: {e}")
+                QMessageBox.warning(self, "Hata", f"Yazdırma hatası: {e}")
         else:
-            print("Printing canceled by user.")
+            self.status_bar.showMessage("Yazdırma iptal edildi.")
     
     def _print_document(self, printer, from_page, to_page):
         """Handles the actual printing of the document."""
@@ -548,13 +594,14 @@ class MainWindow(QMainWindow):
             self.display_page(self.current_page_index + 1) # Display the new page
             self.update_status_bar()
         else:
-            print("Failed to add blank page.") # TODO: Error message
+            QMessageBox.warning(self, "Hata", "Boş sayfa eklenemedi.")
+            logger.error("Failed to add blank page.")
 
     def delete_page(self):
         """Deletes the current page from the PDF file."""
         if not self.pdf_handler.doc or self.current_page_index < 0:
-             print("No page selected to delete.")
-             return
+            self.status_bar.showMessage("Silinecek sayfa seçilmedi.")
+            return
 
         page_to_delete = self.current_page_index
         page_count_before = self.pdf_handler.page_count
@@ -571,7 +618,8 @@ class MainWindow(QMainWindow):
             self.display_page(new_page_index) # Display adjacent page or clear if empty
 
         else:
-            print(f"Failed to delete page {page_to_delete}.") # TODO: Error message
+            QMessageBox.warning(self, "Hata", f"Sayfa {page_to_delete + 1} silinemedi.")
+            logger.error(f"Failed to delete page {page_to_delete}.")
 
     def rotate_left(self):
         """Rotates the current page 90 degrees counter-clockwise (saat yönünün tersine)."""
@@ -594,15 +642,16 @@ class MainWindow(QMainWindow):
                 self.update_status_bar()
                 self.pdf_viewer.update() # Explicitly update the PDF viewer
             else:
-                print(f"Failed to rotate page {self.current_page_index} by {angle} degrees.") # TODO: Error msg
+                QMessageBox.warning(self, "Hata", "Sayfa döndürülemedi.")
+                logger.error(f"Failed to rotate page {self.current_page_index} by {angle} degrees.")
         else:
-             print("No page selected or loaded to rotate.")
+            self.status_bar.showMessage("Döndürülecek sayfa yüklü değil.")
 
     def merge_pdf(self):
         """Merges another PDF into the current one."""
         if not self.pdf_handler.doc:
-             print("Open a base PDF document first before merging.") # TODO: Message box
-             return
+            QMessageBox.warning(self, "Hata", "Dosya birleştirmek için önce bir belge açın.")
+            return
 
         filepath, _ = QFileDialog.getOpenFileName(self, "Select PDF to Merge", "", "PDF Files (*.pdf)")
         if filepath:
@@ -640,19 +689,19 @@ class MainWindow(QMainWindow):
                     if self.pdf_handler.merge_document(path):
                         merged_count += 1
                     else:
-                        print(f"Merge failed: {path}")
+                        logger.error(f"Merge failed: {path}")
                 # UI güncelle
                 self.update_thumbnails()
                 self.update_status_bar()
                 QMessageBox.information(self, "Birleştirme Tamamlandı", 
                                           f"{len(pdf_paths)} dosyadan {merged_count + (1 if start_index==1 else 0)} dosya birleştirildi.")
         except Exception as e:
-            print(f"merge_pdfs_in_folder error: {e}")
+            logger.error(f"merge_pdfs_in_folder error: {e}")
 
     def split_pdf(self):
         """Splits the current PDF into separate files based on user selection."""
         if not self.pdf_handler.doc:
-            print("PDF bölmek için önce bir PDF dosyası açın.") # TODO: Message box
+            QMessageBox.warning(self, "Hata", "PDF bölmek için önce bir PDF dosyası açın.")
             return
             
         # Import the split dialog
@@ -716,70 +765,57 @@ class MainWindow(QMainWindow):
             # Log seviyesini normale döndür
             logging.getLogger().setLevel(logging.WARNING)
         except Exception as e:
-            print(f"Tema bazlı SVG ikonları hazırlanırken hata oluştu: {e}")
+            logger.error(f"Tema bazlı SVG ikonları hazırlanırken hata oluştu: {e}")
             
     # _update_toolbar_icons metodu kaldırıldı ve toolbar_manager.py'deki update_button_icons metodu kullanılıyor
     
     def apply_theme(self, theme_name):
         """Applies the selected qt-material theme and updates SVG icons."""
-        print(f"--- Applying theme: {theme_name} ---")
         try:
             # Construct full path to the theme file
             qt_material_path = qt_material.__path__[0]
             theme_file_path = os.path.join(qt_material_path, 'themes', f"{theme_name}.xml")
 
-            print(f"Attempting to apply theme file path: {theme_file_path}")
             if os.path.exists(theme_file_path):
                 apply_stylesheet(self.app, theme=theme_file_path) # Pass full path
-                print(f"qt_material.apply_stylesheet called with path: {theme_file_path}")
             else:
-                print(f"ERROR: Theme file not found at {theme_file_path}")
+                logger.error(f"ERROR: Theme file not found at {theme_file_path}")
                 return # Don't proceed if file not found
 
-            # Tema verilerini al ve ikon temasını ayarla (get_theme uses name without extension)
+            # Tema verilerini al ve ikon temasını ayarla
             try:
                 theme_data = get_theme(theme_name)
                 if theme_data and 'icon_theme' in theme_data:
-                    print(f"Setting icon theme: {theme_data['icon_theme']}") # Debug print
                     set_icons_theme(theme_data['icon_theme'])
                     
                     # Tema değiştiğinde önceden hazırlanmış tema bazlı SVG ikonlarını kullanacağız
-                    # İlk çalıştırmada, eğer tema bazlı ikonlar oluşturulmamışsa oluşturalım
                     from gui.svg_utils import create_themed_icons
                     icons_dir = os.path.join(os.path.dirname(__file__), 'icons')
                     
                     # Tema dizinlerini kontrol et, yoksa oluştur
                     theme_dir = os.path.join(icons_dir, theme_name)
                     if not os.path.exists(theme_dir):
-                        print(f"Tema için ikon dizini oluşturuluyor: {theme_name}")
                         create_themed_icons(icons_dir)
                 else:
                     # If no specific icon theme is defined, don't call set_icons_theme.
-                    # Let qt-material handle defaults based on the main theme.
-                    print(f"No specific icon theme found for {theme_name}. Skipping explicit icon theme setting.") # Debug print
+                    pass
             except Exception as theme_error:
-                # If getting theme data fails, don't call set_icons_theme.
-                print(f"Error getting theme data: {theme_error}. Skipping explicit icon theme setting.")
+                logger.warning(f"Error getting theme data: {theme_error}")
             
             # Tema ayarlarını kaydet
             self.current_theme = theme_name
             self.settings.setValue("theme", theme_name)
-            print(f"Theme successfully set to: {theme_name}") # Debug print
             
             # Toolbar butonlarının ikonlarını güncelle
             self.toolbar_manager.update_button_icons(theme_name)
             
-            # Arayüzü yenile (Repolish deneyelim)
-            # self.update() # update() yeterli olmayabilir
+            # Arayüzü yenile
             self.style().unpolish(self)
             self.style().polish(self)
-            # Ayrıca uygulama genelinde stilin yenilenmesini tetikleyebiliriz
-            self.app.processEvents() # Olay döngüsünü işleterek güncellemelerin görünmesini sağla
-            print(f"Theme application finished for: {theme_name}") # Bitiş logu
+            self.app.processEvents() 
+            
         except Exception as e:
-            print(f"ERROR applying theme {theme_name}: {e}") # Catch and print any exception
-            import traceback
-            traceback.print_exc() # Print full traceback for detailed error info
+            logger.error(f"ERROR applying theme {theme_name}: {e}")
 
     def on_annotation_selected(self, annot_type, props):
         """Update properties bar when an annotation is selected."""
@@ -795,6 +831,164 @@ class MainWindow(QMainWindow):
         """Shows the About dialog."""
         dialog = AboutDialog(self)
         dialog.exec()
+
+    def show_ai_settings(self):
+        """Shows the AI settings dialog."""
+        dialog = AISettingsDialog(self)
+        dialog.exec()
+
+    def ai_summarize_doc(self):
+        """Triggers AI document summarization."""
+        if not self.pdf_handler.doc:
+            QMessageBox.warning(self, "Hata", "Özetlenecek bir PDF belgesi açık değil.")
+            return
+
+        self.show_ai_dock()
+        self.ai_assistant_content.add_message("Belge özetleniyor, lütfen bekleyin...", "ai")
+        
+        # Extract text from PDF
+        text = ""
+        for i in range(min(5, self.pdf_handler.page_count)): # İlk 5 sayfayı özetleyelim şimdilik
+            page = self.pdf_handler.doc[i]
+            text += page.get_text()
+            
+        prompt = f"Lütfen aşağıdaki PDF içeriğini maddeler halinde özetle:\n\n{text}"
+        self.ai_handler.generate_response(prompt, system_prompt="Sen profesyonel bir özetleme asistanısın.")
+
+    def toggle_ai_assistant(self):
+        """Shows or hides the AI Assistant dock widget."""
+        if self.ai_dock.isVisible():
+            self.ai_dock.hide()
+        else:
+            self.show_ai_dock()
+
+    def show_ai_dock(self):
+        """Ensures the AI dock is visible and at the front."""
+        self.ai_dock.show()
+        self.ai_dock.raise_()
+
+    def ai_action_on_selection(self, action_type, text):
+        """Performs an AI action on the currently selected text."""
+        if not text:
+            return
+
+        self.show_ai_dock()
+        
+        prompts = {
+            "açıkla": f"Lütfen şu metni açıkla ve varsa karmaşık terimleri basitleştir:\n\n{text}",
+            "özetle": f"Lütfen şu metni kısaca özetle:\n\n{text}",
+            "çevir": f"Lütfen şu metni anlamını koruyarak Türkçeye çevir:\n\n{text}",
+            "akademik": f"Lütfen şu metni anlamını koruyarak akademik bir dille yeniden yaz:\n\n{text}",
+            "sadeleştir": f"Lütfen şu metni herkesin anlayabileceği şekilde (plain language) sadeleştir:\n\n{text}",
+            "profesyonel": f"Lütfen şu metni kurumsal ve profesyonel bir tonla yeniden yaz:\n\n{text}"
+        }
+        
+        prompt = prompts.get(action_type, f"Şu metin üzerinde işlem yap: {text}")
+        
+        self.ai_assistant_content.add_message(f"Seçili metin için '{action_type}' işlemi başlatıldı...", "ai")
+        self.ai_handler.generate_response(prompt, use_context=False) # Context kapalı çünkü spesifik metin istiyoruz
+
+    def ai_analyze_contract(self):
+        """Analyzes the current PDF as a contract."""
+        if not self.pdf_handler.doc:
+            return
+            
+        self.show_ai_dock()
+        self.ai_assistant_content.add_message("Sözleşme analizi yapılıyor, bu biraz zaman alabilir...", "ai")
+        
+        # Extract text (first 15 pages for contract)
+        text = ""
+        for i in range(min(15, self.pdf_handler.page_count)):
+            text += self.pdf_handler.doc[i].get_text()
+            
+        self.prof_handler.analyze_contract(text)
+
+    def ai_extract_invoice(self):
+        """Extracts invoice data from the current PDF."""
+        if not self.pdf_handler.doc:
+            return
+            
+        self.show_ai_dock()
+        self.ai_assistant_content.add_message("Fatura verileri ayıklanıyor...", "ai")
+        
+        # Extract text from first page usually enough for invoice
+        text = self.pdf_handler.doc[0].get_text()
+        self.prof_handler.extract_invoice_data(text)
+
+    def ai_form_assistant(self):
+        """Detects form fields and suggests values."""
+        if not self.pdf_handler.doc:
+            return
+            
+        self.show_ai_dock()
+        fields = self.form_handler.detect_form_fields(self.pdf_handler.doc)
+        
+        if not fields:
+            self.ai_assistant_content.add_message("Bu belgede etkileşimli form alanı tespit edilemedi.", "ai")
+            return
+            
+        self.ai_assistant_content.add_message(f"Belgede {len(fields)} adet form alanı tespit edildi. Öneriler hazırlanıyor...", "ai")
+        
+        # Get context from first 3 pages
+        context = ""
+        for i in range(min(3, self.pdf_handler.page_count)):
+            context += self.pdf_handler.doc[i].get_text()
+            
+        suggestions = self.form_handler.suggest_form_values(fields, context)
+        
+        if suggestions:
+            msg = "### Form Önerileri\n\n"
+            for field, val in suggestions.items():
+                msg += f"- **{field}**: {val}\n"
+            msg += "\n*Formu bu verilerle doldurmak için tıklayın (Yakında)*"
+            self.ai_assistant_content.add_message(msg, "ai")
+        else:
+            self.ai_assistant_content.add_message("Form alanları için öneri oluşturulamadı.", "ai")
+
+    def ai_compare_docs(self):
+        """Compares current PDF with another one semantically."""
+        if not self.pdf_handler.doc:
+            return
+            
+        file_path, _ = QFileDialog.getOpenFileName(self, "Karşılaştırılacak PDF'i Seç", "", "PDF Files (*.pdf)")
+        if not file_path:
+            return
+            
+        import fitz
+        doc2 = fitz.open(file_path)
+        
+        self.show_ai_dock()
+        self.ai_assistant_content.add_message(f"'{os.path.basename(file_path)}' ile anlamsal karşılaştırma yapılıyor...", "ai")
+        
+        # Extract text from both (first 5 pages)
+        text1 = ""
+        for i in range(min(5, self.pdf_handler.page_count)):
+            text1 += self.pdf_handler.doc[i].get_text()
+            
+        text2 = ""
+        for i in range(min(5, doc2.page_count)):
+            text2 += doc2[i].get_text()
+            
+        prompt = (
+            "Aşağıdaki iki metni anlamsal olarak karşılaştır. Sadece metin farklarını değil, "
+            "içerik, ton ve ana fikir farklarını da belirt. Maddeler halinde özetle.\n\n"
+            f"BELGE 1:\n{text1[:4000]}\n\nBELGE 2:\n{text2[:4000]}"
+        )
+        
+        self.ai_handler.generate_response(prompt, system_prompt="Sen uzman bir belge analistisin.")
+
+    def ai_analyze_readability(self):
+        """Analyzes readability level of the document."""
+        if not self.pdf_handler.doc:
+            return
+            
+        self.show_ai_dock()
+        text = self.pdf_handler.doc[self.current_page_index].get_text()
+        prompt = (
+            f"Aşağıdaki metnin okunabilirlik seviyesini (A1-C2 arası) analiz et. "
+            "Cümle yapısı, kelime dağarcığı ve karmaşıklık açısından değerlendir.\n\nMetin: {text}"
+        )
+        self.ai_handler.generate_response(prompt)
 
     # --- Edit Toolbar Actions ---
     def select_tool(self):
@@ -891,7 +1085,7 @@ class MainWindow(QMainWindow):
     def _check_doc_open(self):
         """Helper to check if a document is open."""
         if not self.pdf_handler or not self.pdf_handler.doc:
-            print("Lütfen önce bir PDF dosyası açın.")
+            QMessageBox.warning(self, "Hata", "Lütfen önce bir PDF dosyası açın.")
             self.status_bar.showMessage("Hata: PDF dosyası açık değil.")
             return False
         return True

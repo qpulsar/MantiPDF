@@ -51,7 +51,8 @@ class PDFAnnotations:
             fitz_rect = fitz.Rect(rect.x(), rect.y(), rect.x() + rect.width(), rect.y() + rect.height())
             
             annot = page.add_freetext_annot(fitz_rect, content, fontsize=fontsize, text_color=color, fontname=fontname)
-            annot.update(fontname=fontname)
+            # Just call update without redundant parameters if not needed
+            annot.update()
             
             self.pdf_handler.modified = True
             return annot

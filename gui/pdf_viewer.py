@@ -3,6 +3,9 @@ from PyQt6.QtGui import QPixmap, QImage, QCursor, QPainter, QPen, QColor, QPolyg
 from PyQt6.QtCore import Qt, QPoint, QPointF, pyqtSignal, QRectF
 import fitz
 import re
+import logging
+
+logger = logging.getLogger("pdf_viewer")
 
 from core.pdf_handler import PDFHandler # Import PDFHandler for type hinting
 from gui.note_item import NoteItem # Import the NoteItem class
@@ -64,6 +67,12 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
         self.drag_displacement_pdf = (0, 0) # Current displacement (dx, dy)
         self.original_annot_rect = None # Original rect of the annotation
         self.original_vertices = None # Original vertices if it's a line/poly
+        
+        # Text selection attributes
+        self.selection_start = None
+        self.selection_end = None
+        self.selected_text = ""
+        self.is_selecting_text = False
         
         # Selection feedback
         self.selection_color = QColor(0, 120, 215)
@@ -156,7 +165,7 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
                             self.selected_annot = annot
                             break
                 except Exception as e:
-                    print(f"Error re-binding annotation: {e}")
+                    logger.error(f"Error re-binding annotation: {e}")
 
             pixmap = self.pdf_handler.get_page_pixmap(self.current_page_index, scale=self.current_scale)
             if pixmap:
@@ -240,9 +249,15 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
             
             # Handle type specific properties
             if annot.type[0] == 2: # FreeText
-                # For FreeText, background color is passed to update() as fill_color
-                annot.update(fontsize=p["font_size"], fontname=p["font_family"], 
-                             text_color=stroke, fill_color=fill)
+                # For FreeText, only pass fill_color if it exists to avoid warnings
+                update_params = {
+                    "fontsize": p["font_size"],
+                    "fontname": p["font_family"],
+                    "text_color": stroke
+                }
+                if fill:
+                    update_params["fill_color"] = fill
+                annot.update(**update_params)
             elif annot.type[0] == 3: # Line
                 if p["arrow_type"] == "start":
                     annot.set_line_ends(fitz.PDF_ANNOT_LE_CLOSED_ARROW, fitz.PDF_ANNOT_LE_NONE)
@@ -260,7 +275,7 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
             if "weakly-referenced" in str(e) or "ReferenceError" in str(type(e)):
                 self.selected_annot = None
             else:
-                print(f"Error applying properties to annotation: {e}")
+                logger.error(f"Error applying properties to annotation: {e}")
 
     def get_annot_properties(self, annot):
         """Extracts current properties from a fitz.Annot object."""
@@ -330,7 +345,7 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
                     props["arrow_type"] = "none"
                     
         except Exception as e:
-            print(f"Error getting properties from annotation: {e}")
+            logger.error(f"Error getting properties from annotation: {e}")
         
         return props
 
@@ -384,7 +399,7 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
             self.update_display()
             self.parent_window.status_bar.showMessage("Nesne silindi.")
         except Exception as e:
-            print(f"Error deleting annotation: {e}")
+            logger.error(f"Error deleting annotation: {e}")
     
     def edit_freetext(self, annot):
         """Opens a dialog to edit FreeText content."""
@@ -398,7 +413,7 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
                 self.pdf_handler.modified = True
                 self.update_display()
             except Exception as e:
-                print(f"Error editing text: {e}")
+                logger.error(f"Error editing text: {e}")
     
     def set_line_arrow(self, annot, arrow_type):
         """Sets the arrow type for a line annotation."""
@@ -415,7 +430,7 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
             self.pdf_handler.modified = True
             self.update_display()
         except Exception as e:
-            print(f"Error setting arrow type: {e}")
+            logger.error(f"Error setting arrow type: {e}")
     
     def toggle_fill(self, annot):
         """Toggles fill color on/off for shape annotations."""
@@ -431,7 +446,7 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
             self.pdf_handler.modified = True
             self.update_display()
         except Exception as e:
-            print(f"Error toggling fill: {e}")
+            logger.error(f"Error toggling fill: {e}")
     
     def reflow_freetext_annotation(self, annot):
         """Re-creates a FreeText annotation to reflow text to the new rect."""
@@ -478,7 +493,7 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
             self.pdf_handler.modified = True
             
         except Exception as e:
-            print(f"Error reflowing text: {e}")
+            logger.error(f"Error reflowing text: {e}")
 
     # --- Event Handling ---
     def eventFilter(self, obj, event):
@@ -527,7 +542,7 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
                                             self.selected_annot = annot
                                             break
                                 except Exception as e:
-                                    print(f"Error accessing annotations: {e}")
+                                    logger.error(f"Error accessing annotations: {e}")
                             
                             # Emit deselect if we had something and now don't
                             if old_selected and not self.selected_annot:
@@ -558,6 +573,18 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
                         self.image_label.update()
                         return True
                     
+                    # If nothing is hit, start text selection
+                    if self.annotation_mode == "select":
+                        self.is_selecting_text = True
+                        offset_x = (self.image_label.width() - (self.current_pixmap.width() if self.current_pixmap else 0)) / 2
+                        offset_y = (self.image_label.height() - (self.current_pixmap.height() if self.current_pixmap else 0)) / 2
+                        self.selection_start = QPointF((event.pos().x() - offset_x) / self.current_scale, 
+                                                      (event.pos().y() - offset_y) / self.current_scale)
+                        self.selection_end = self.selection_start
+                        self.selected_text = ""
+                        self.image_label.update()
+                        return True
+
                     elif self.annotation_mode:
                         self.start_pos = event.pos()
                         self.current_pos = event.pos()
@@ -583,7 +610,7 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
                                         clicked_annot = annot
                                         break
                             except Exception as e:
-                                print(f"Error finding annotation for context menu: {e}")
+                                logger.error(f"Error finding annotation for context menu: {e}")
                         
                         if clicked_annot:
                             self.selected_annot = clicked_annot
@@ -650,7 +677,7 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
                             self.selected_annot.update()
                             self.pdf_handler.modified = True
                     except Exception as e:
-                        print(f"Resize error: {e}")
+                        logger.error(f"Resize error: {e}")
                     
                     self.update_display()
                     return True
@@ -687,6 +714,14 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
                     self.image_label.update()
                     return True
 
+                if self.is_selecting_text:
+                    offset_x = (self.image_label.width() - (self.current_pixmap.width() if self.current_pixmap else 0)) / 2
+                    offset_y = (self.image_label.height() - (self.current_pixmap.height() if self.current_pixmap else 0)) / 2
+                    self.selection_end = QPointF((event.pos().x() - offset_x) / self.current_scale, 
+                                                (event.pos().y() - offset_y) / self.current_scale)
+                    self.image_label.update()
+                    return True
+
                 elif self.is_drawing:
                     self.current_pos = event.pos()
                     self.image_label.update()
@@ -705,7 +740,7 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
                         try:
                             self.reflow_freetext_annotation(self.selected_annot)
                         except Exception as e:
-                            print(f"Error during text reflow: {e}")
+                            logger.error(f"Error during text reflow: {e}")
                     
                     self.resize_start_rect = None
                     self.update_display()
@@ -746,7 +781,7 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
                                     new_annot.update()
                                     self.selected_annot = new_annot
                             except Exception as e:
-                                print(f"Error moving line: {e}")
+                                logger.error(f"Error moving line: {e}")
                         else:
                             # For non-line annotations (Circle, Square, FreeText, etc.)
                             # Apply the final move now
@@ -760,7 +795,7 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
                                 self.selected_annot.set_rect(new_rect)
                                 self.selected_annot.update()
                             except Exception as e:
-                                print(f"Error moving annotation: {e}")
+                                logger.error(f"Error moving annotation: {e}")
                         
                         self.pdf_handler.modified = True
                     
@@ -769,6 +804,18 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
                     self.original_annot_rect = None
                     self.original_vertices = None
                     self.update_display()
+                    return True
+
+                if self.is_selecting_text:
+                    self.is_selecting_text = False
+                    # Extract selected text
+                    if self.selection_start and self.selection_end:
+                        rect = QRectF(self.selection_start, self.selection_end).normalized()
+                        fitz_rect = fitz.Rect(rect.left(), rect.top(), rect.right(), rect.bottom())
+                        if self.current_fitz_page:
+                            self.selected_text = self.current_fitz_page.get_text("text", clip=fitz_rect)
+                            if self.selected_text:
+                                self.show_ai_selection_menu(event.globalPosition().toPoint())
                     return True
                 
                 if self.is_drawing:
@@ -796,6 +843,9 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
                 if self.selected_annot and self.annotation_mode == "select":
                     self.draw_selection_frame(painter)
                 
+                if (self.is_selecting_text or self.selected_text) and self.selection_start and self.selection_end:
+                    self.draw_text_selection(painter)
+                
                 painter.end()
                 return True # Tell Qt we've handled the painting
 
@@ -810,7 +860,7 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
                         self.update_display()
                         self.parent_window.status_bar.showMessage("Nesne silindi.")
                 except Exception as e:
-                    print(f"Error deleting annotation via Delete key: {e}")
+                    logger.error(f"Error deleting annotation via Delete key: {e}")
                     self.selected_annot = None
                 return True
 
@@ -996,6 +1046,54 @@ class PDFViewer(QScrollArea): # Change to QScrollArea for scrolling large pages
         
         # Re-render to show the new annotation
         self.update_display()
+
+    def draw_text_selection(self, painter):
+        """Draws a semi-transparent rectangle for text selection."""
+        offset_x = (self.image_label.width() - (self.current_pixmap.width() if self.current_pixmap else 0)) / 2
+        offset_y = (self.image_label.height() - (self.current_pixmap.height() if self.current_pixmap else 0)) / 2
+        
+        rect = QRectF(self.selection_start, self.selection_end).normalized()
+        screen_rect = QRectF(rect.left() * self.current_scale + offset_x,
+                            rect.top() * self.current_scale + offset_y,
+                            rect.width() * self.current_scale,
+                            rect.height() * self.current_scale)
+        
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(0, 120, 215, 80))
+        painter.drawRect(screen_rect)
+
+    def show_ai_selection_menu(self, global_pos):
+        """Context menu for AI actions on selected text."""
+        menu = QMenu(self)
+        
+        explain_action = menu.addAction("AI ile Açıkla")
+        summarize_action = menu.addAction("AI ile Özetle")
+        translate_action = menu.addAction("Türkçeye Çevir")
+        
+        rewrite_menu = menu.addMenu("Yeniden Yaz")
+        academic_action = rewrite_menu.addAction("Akademik Dile Çevir")
+        simplify_action = rewrite_menu.addAction("Sadeleştir (Plain Language)")
+        professional_action = rewrite_menu.addAction("Profesyonel Ton")
+        
+        copy_action = menu.addAction("Kopyala")
+        
+        action = menu.exec(global_pos)
+        
+        if action == explain_action:
+            self.parent_window.ai_action_on_selection("açıkla", self.selected_text)
+        elif action == summarize_action:
+            self.parent_window.ai_action_on_selection("özetle", self.selected_text)
+        elif action == translate_action:
+            self.parent_window.ai_action_on_selection("çevir", self.selected_text)
+        elif action == academic_action:
+            self.parent_window.ai_action_on_selection("akademik", self.selected_text)
+        elif action == simplify_action:
+            self.parent_window.ai_action_on_selection("sadeleştir", self.selected_text)
+        elif action == professional_action:
+            self.parent_window.ai_action_on_selection("profesyonel", self.selected_text)
+        elif action == copy_action:
+            from PyQt6.QtWidgets import QApplication
+            QApplication.clipboard().setText(self.selected_text)
 
     # --- Zoom Methods ---
     def zoom_in(self):

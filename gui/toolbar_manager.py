@@ -3,6 +3,9 @@ from PyQt6.QtWidgets import QToolBar, QPushButton, QWidget, QVBoxLayout, QComboB
 from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtCore import Qt, QSize
 from gui.svg_utils import get_icon_for_theme
+import logging
+
+logger = logging.getLogger("toolbar_manager")
 
 class ToolbarManager:
     """Manages the toolbars for the MantiPDF Editor."""
@@ -77,7 +80,7 @@ class ToolbarManager:
     def update_button_icons(self, theme_name):
         """Toolbar butonlarının ikonlarını belirtilen temaya göre günceller."""
         try:
-            print(f"Toolbar butonlarının ikonları '{theme_name}' temasına göre güncelleniyor...")
+            logger.info(f"Toolbar butonlarının ikonları '{theme_name}' temasına göre güncelleniyor...")
             icons_dir = os.path.join(os.path.dirname(__file__), 'icons')
             
             # Saklanan buton ve ikon adlarını kullanarak ikonları güncelle
@@ -86,13 +89,11 @@ class ToolbarManager:
                 button.setIcon(QIcon(icon_path))
                 # İkon boyutunu korumak için tekrar ayarla
                 button.setIconSize(QSize(26, 26))
-                print(f"'{button.text()}' butonu için ikon güncellendi: {icon_path}")
+                logger.debug(f"Buton için ikon güncellendi: {icon_name}")
                 
-            print("Toolbar butonlarının ikonları güncellendi.")
+            logger.info("Toolbar butonlarının ikonları güncellendi.")
         except Exception as e:
-            print(f"Toolbar butonlarının ikonları güncellenirken hata oluştu: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Toolbar butonlarının ikonları güncellenirken hata oluştu: {e}")
 
     def add_action(self, toolbar, action):
         """Add an action to the toolbar."""

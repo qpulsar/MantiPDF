@@ -2,6 +2,9 @@ import os
 import shutil
 from xml.etree import ElementTree as ET
 from qt_material import get_theme
+import logging
+
+logger = logging.getLogger("svg_utils")
 
 def update_svg_colors(svg_path, theme_name):
     """SVG dosyasındaki renkleri tema rengine göre günceller.
@@ -44,13 +47,13 @@ def update_svg_colors(svg_path, theme_name):
             if primary_color:
                 secondary_path.set('style', f"fill: {primary_color};")
             else:
-                print(f"Tema içinde 'primaryColor' bulunamadı: {theme_name}")
+                logger.warning(f"Tema içinde 'primaryColor' bulunamadı: {theme_name}")
 
         # Güncellenmiş SVG'yi string olarak döndür
         return ET.tostring(root, encoding='unicode')
 
     except Exception as e:
-        print(f"SVG güncelleme hatası: {e}")
+        logger.error(f"SVG güncelleme hatası: {e}")
         return None
 
 def get_themed_icon_path(original_icon_path, theme_name):

@@ -4,6 +4,10 @@ from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtCore import Qt
 
 from core.pdf_annotations import PDFAnnotations
+import logging
+
+# Configure logging for the module
+logger = logging.getLogger("pdf_handler")
 
 class PDFHandler:
     """Handles PDF document loading, manipulation, and rendering."""
@@ -36,7 +40,7 @@ class PDFHandler:
             
             return True
         except Exception as e:
-            print(f"Error opening PDF {filepath}: {e}")
+            logger.error(f"Error opening PDF {filepath}: {e}")
             self.doc = None
             self.filepath = None
             self.annotations = None
@@ -48,7 +52,7 @@ class PDFHandler:
             try:
                 self.doc.close()
             except Exception as e:
-                print(f"Error closing PDF {self.filepath}: {e}")
+                logger.error(f"Error closing PDF {self.filepath}: {e}")
             finally:
                 self.doc = None
                 self.filepath = None
@@ -66,7 +70,7 @@ class PDFHandler:
             try:
                 return self.doc.load_page(page_num)
             except Exception as e:
-                print(f"Error loading page {page_num}: {e}")
+                logger.error(f"Error loading page {page_num}: {e}")
                 return None
         return None
 
@@ -95,7 +99,7 @@ class PDFHandler:
                 qpixmap = QPixmap.fromImage(img)
                 return qpixmap
             except Exception as e:
-                print(f"Error getting pixmap for page {page_num}: {e}")
+                logger.error(f"Error getting pixmap for page {page_num}: {e}")
                 return None
         return None
 
@@ -103,16 +107,16 @@ class PDFHandler:
     def save_document(self, filepath: str | None = None):
         """Saves the document. If filepath is None, saves to the original path."""
         if not self.doc:
-            print("No document open to save.")
+            logger.warning("No document open to save.")
             return False
 
         if not self.modified and filepath is None:
-            print("No modifications to save.")
+            logger.info("No modifications to save.")
             return True # Nothing to do
 
         save_path = filepath if filepath else self.filepath
         if not save_path:
-            print("Cannot save document without a filepath.")
+            logger.warning("Cannot save document without a filepath.")
             # Maybe trigger Save As? For now, return False
             return False
 
@@ -142,7 +146,7 @@ class PDFHandler:
             self.modified = False
             return True
         except Exception as e:
-            print(f"Error saving PDF to {save_path}: {e}")
+            logger.error(f"Error saving PDF to {save_path}: {e}")
             # Try to recover if possible?
             if 'temp_path' in locals() and os.path.exists(temp_path):
                 try: os.remove(temp_path)
@@ -165,7 +169,7 @@ class PDFHandler:
         if not self.doc or not (0 <= page_num < self.page_count):
             return False
         if angle not in [90, 180, 270]:
-             print(f"Invalid rotation angle: {angle}. Must be 90, 180, or 270.")
+             logger.warning(f"Invalid rotation angle: {angle}. Must be 90, 180, or 270.")
              return False
 
         try:
@@ -177,7 +181,7 @@ class PDFHandler:
             self.modified = True
             return True
         except Exception as e:
-            print(f"Error rotating page {page_num}: {e}")
+            logger.error(f"Error rotating page {page_num}: {e}")
             return False
 
     def move_page(self, from_index: int, to_index: int):
@@ -191,7 +195,7 @@ class PDFHandler:
             self.modified = True
             return True
         except Exception as e:
-            print(f"Error moving page: {e}")
+            logger.error(f"Error moving page: {e}")
             return False
 
     def add_blank_page(self, width: float = 595, height: float = 842, index: int = -1):
@@ -203,7 +207,7 @@ class PDFHandler:
             self.modified = True
             return True
         except Exception as e:
-            print(f"Error adding blank page: {e}")
+            logger.error(f"Error adding blank page: {e}")
             return False
 
     def delete_page(self, page_num: int):
@@ -214,26 +218,26 @@ class PDFHandler:
             self.modified = True
             return True
         except Exception as e:
-            print(f"Error deleting page {page_num}: {e}")
+            logger.error(f"Error deleting page {page_num}: {e}")
             return False
 
     def merge_document(self, other_pdf_path: str):
         """Merges another PDF document into the current one."""
         if not self.doc:
-            print("No document open to merge into.")
+            logger.warning("No document open to merge into.")
             return False
         if not os.path.exists(other_pdf_path):
-            print(f"File not found: {other_pdf_path}")
+            logger.warning(f"File not found: {other_pdf_path}")
             return False
         try:
             other_doc = fitz.open(other_pdf_path)
             self.doc.insert_pdf(other_doc)
             other_doc.close()
             self.modified = True
-            print(f"Merged document {other_pdf_path} into {self.filepath}")
+            logger.info(f"Merged document {other_pdf_path} into {self.filepath}")
             return True
         except Exception as e:
-            print(f"Error merging document {other_pdf_path}: {e}")
+            logger.error(f"Error merging document {other_pdf_path}: {e}")
             return False
             
     def split_pdf(self, output_dir: str, split_all: bool, page_ranges: list[tuple[int, int]] | None) -> list[str]:
@@ -249,10 +253,10 @@ class PDFHandler:
             A list of created file paths. Returns an empty list on failure.
         """
         if not self.doc or not self.filepath:
-            print("No document open to split.")
+            logger.warning("No document open to split.")
             return []
         if not os.path.isdir(output_dir):
-            print(f"Output directory does not exist: {output_dir}")
+            logger.warning(f"Output directory does not exist: {output_dir}")
             return []
 
         base_filename = os.path.splitext(os.path.basename(self.filepath))[0]
@@ -268,7 +272,7 @@ class PDFHandler:
                     new_doc.save(output_filename)
                     new_doc.close()
                     created_files.append(output_filename)
-                print(f"{len(created_files)} sayfa başarıyla ayrı PDF dosyalarına bölündü.")
+                logger.info(f"{len(created_files)} sayfa başarıyla ayrı PDF dosyalarına bölündü.")
 
             elif page_ranges:
                 # Split by ranges
@@ -285,24 +289,15 @@ class PDFHandler:
                         new_doc.save(output_filename)
                         new_doc.close()
                         created_files.append(output_filename)
-                    else:
-                        print(f"Skipping invalid page range: {start_page+1}-{end_page+1}")
-                print(f"{len(created_files)} PDF dosyası belirtilen aralıklara göre başarıyla oluşturuldu.")
-            
-            else:
-                print("Geçersiz bölme seçeneği.")
-                return []
-
             return created_files
-
         except Exception as e:
-            print(f"PDF bölme sırasında hata oluştu: {e}")
-            return created_files # Return what we have so far
+            logger.error(f"PDF bölme sırasında hata oluştu: {e}")
+            return created_files
 
     def extract_text(self, page_num: int) -> str | None:
         """Extracts text from a specific page."""
         if not self.doc or not (0 <= page_num < self.page_count):
-            print(f"Invalid document or page number: {page_num}")
+            logger.warning(f"Invalid document or page number: {page_num}")
             return None
             
         try:
@@ -314,7 +309,7 @@ class PDFHandler:
             
             return text
         except Exception as e:
-            print(f"Error extracting text from page {page_num}: {e}")
+            logger.error(f"Error extracting text from page {page_num}: {e}")
             return None
             
     def save_page_as_image(self, page_num: int, filepath: str, dpi: int = 300, image_format: str = "png"):
@@ -330,7 +325,7 @@ class PDFHandler:
             True if successful, False otherwise.
         """
         if not self.doc or not (0 <= page_num < self.page_count):
-            print(f"Invalid document or page number: {page_num}")
+            logger.warning(f"Invalid document or page number: {page_num}")
             return False
             
         try:
@@ -348,7 +343,7 @@ class PDFHandler:
             pix.save(filepath)
             return True
         except Exception as e:
-            print(f"Error saving page as image: {e}")
+            logger.error(f"Error saving page as image: {e}")
             return False
             
     def add_note(self, page_index, rect, content, username=None, color=(1, 1, 0)):

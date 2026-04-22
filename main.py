@@ -6,8 +6,16 @@ from PyQt6.QtCore import QSettings, QTimer, Qt
 import qt_material # Import qt_material to get its path
 from qt_material import apply_stylesheet, set_icons_theme, get_theme
 
-# Import the main window class
 from gui.main_window import MainWindow
+import logging
+import fitz
+
+# Configure basic logging
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("main")
+
+# Suppress PyMuPDF fill color warnings
+fitz.TOOLS.mupdf_display_errors(False)
 
 def main():
     """Main function to run the MantiPDF application."""
@@ -51,12 +59,10 @@ def main():
             
             logging.getLogger().setLevel(logging.WARNING)
         else:
-             print(f"ERROR: Initial theme file not found at {theme_file_path}")
+             logger.error(f"ERROR: Initial theme file not found at {theme_file_path}")
 
     except Exception as e:
-        print(f"ERROR applying initial theme {initial_theme} in main.py: {e}")
-        import traceback
-        traceback.print_exc() # Print full traceback for detailed error info
+        logger.error(f"ERROR applying initial theme {initial_theme} in main.py: {e}")
 
     if splash:
         splash.showMessage("Ana pencere hazırlanıyor...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.white)
